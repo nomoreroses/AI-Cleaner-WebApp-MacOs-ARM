@@ -11,8 +11,10 @@ import importlib
 import importlib.util
 import os
 import pkgutil
+import re
 import sys
-from typing import Optional
+import unicodedata
+from typing import Optional, Set
 
 FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
 NEEDS_PKGUTIL_SHIM = FORCE_PKGUTIL_SHIM or not hasattr(pkgutil, 'get_loader') or sys.version_info >= (3, 14)
@@ -80,6 +82,7 @@ state = {
     'results': [],
     'stats': {},
     'files': [],
+    'protected_files': [],
     'last_scan_path': None
 }
 
@@ -103,6 +106,8 @@ PROTECTED_KEYWORDS = [
     'cv', 'lettre', 'motivation', 'contrat', 'attestation', 'certificat',
     'important', 'urgent', 'confidentiel'
 ]
+
+SHORT_KEYWORD_MAX_LEN = 3
 
 CATEGORIES = {
     'Images': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic'},
@@ -128,18 +133,33 @@ def get_category(ext):
             return cat
     return 'Autres'
 
+def _normalize(text: str) -> str:
+    return unicodedata.normalize('NFKD', text).casefold()
+
+
 def is_protected(filename):
-    """Vérifie si un fichier contient un mot-clé protégé"""
-    name_lower = filename.lower()
+    """Vérifie si un fichier contient un mot-clé protégé avec précision."""
+
+    normalized_name = _normalize(filename)
+    tokens = [token for token in re.split(r'[^a-z0-9]+', normalized_name) if token]
+
     for keyword in PROTECTED_KEYWORDS:
-        if keyword in name_lower:
-            return True, keyword
+        normalized_keyword = _normalize(keyword)
+
+        if len(normalized_keyword) <= SHORT_KEYWORD_MAX_LEN:
+            if any(token == normalized_keyword for token in tokens):
+                return True, keyword
+        else:
+            if normalized_keyword in normalized_name:
+                return True, keyword
+
     return False, None
 
-def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None):
+def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None, allowed_categories: Optional[Set[str]] = None):
     """Scan rapide avec os.scandir"""
     stats = defaultdict(lambda: {'count': 0, 'size': 0})
     candidates = []
+    protected_files = []
     total = 0
     
     def scan_recursive(dir_path):
@@ -183,14 +203,26 @@ def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None):
                             size = stat.st_size
                             age_days = (datetime.now().timestamp() - stat.st_mtime) / 86400
                             category = get_category(ext)
-                            
+
+                            if allowed_categories and category not in allowed_categories:
+                                continue
+
                             stats[category]['count'] += 1
                             stats[category]['size'] += size
-                            
+
                             # 🛡️ PROTECTION: Ne pas ajouter si mot-clé protégé
                             protected, keyword = is_protected(entry.name)
                             if protected:
                                 print(f"🛡️ PROTÉGÉ: {entry.name} (mot-clé: {keyword})")
+                                protected_files.append({
+                                    'path': entry.path,
+                                    'name': entry.name,
+                                    'ext': ext,
+                                    'size': size,
+                                    'age': int(age_days),
+                                    'category': category,
+                                    'keyword': keyword
+                                })
                                 continue
                             
                             # Candidat ?
@@ -216,7 +248,8 @@ def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None):
     return {
         'total_files': total,
         'stats': dict(stats),
-        'candidates': sorted(candidates, key=lambda x: x['age'], reverse=True)
+        'candidates': sorted(candidates, key=lambda x: x['age'], reverse=True),
+        'protected': sorted(protected_files, key=lambda x: x['name'].lower())
     }
 
 def call_ollama(prompt, model="llama3:8b"):
@@ -286,33 +319,31 @@ def analyze_file(file_info, model="llama3:8b"):
             'reason': f'🛡️ Document protégé ({keyword})'
         }
     
-    prompt = f"""Analyse ce fichier pour décider s'il peut être supprimé.
+    prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
-Fichier: {file_info['name']}
-Type: {file_info['ext']}
-Taille: {human_size(file_info['size'])}
-Âge: {file_info['age']} jours
+File name: {file_info['name']}
+Extension: {file_info['ext']}
+Size: {human_size(file_info['size'])}
+Age: {file_info['age']} days
 
-RÈGLES STRICTES - TOUJOURS GARDER:
-- Documents médicaux (suivi, ordonnance, analyse, résultat)
-- Factures, reçus, tickets, billets
-- CV, lettres de motivation
-- Documents importants, urgents, confidentiels
-- Documents récents (< 60 jours)
+ALWAYS KEEP:
+- Any medical / health / prescription / lab result document.
+- Invoices, receipts, tickets, travel confirmations.
+- CVs, cover letters, signed contracts, attestations, certificates.
+- Anything marked important/urgent/confidential or newer than 60 days.
 
-SUPPRIMER UNIQUEMENT:
-- Screenshots évidents (nom contient "screenshot", "capture")
-- Fichiers temporaires (.tmp, "temp" dans le nom)
-- Très anciens fichiers sans valeur (> 365 jours)
+DELETE ONLY WHEN:
+- The filename clearly shows screenshot/capture/temp/backup content.
+- It is a throwaway temporary/cache/log file.
+- It is older than 365 days and obviously irrelevant.
 
-SI DOUTE → GARDER
+If unsure, keep the file.
 
-Réponds UNIQUEMENT avec ce JSON exact:
-{{"importance":"high","can_delete":false,"reason":"Raison courte"}}
-
-ou
-
-{{"importance":"low","can_delete":true,"reason":"Raison courte"}}"""
+Respond in valid JSON using exactly one of these shapes:
+{{"importance":"high","can_delete":false,"reason":"short human reason"}}
+or
+{{"importance":"low","can_delete":true,"reason":"short human reason"}}
+"""
     
     socketio.emit('ai_thinking', {
         'file': file_info['name'],
@@ -438,6 +469,19 @@ def api_scan():
 
     min_age = data.get('min_age_days', 30)
     min_size = data.get('min_size_mb', 20)
+    requested_categories = data.get('categories') or []
+
+    allowed_categories = None
+    if requested_categories:
+        allowed_categories = set()
+        valid_categories = set(CATEGORIES.keys()) | {'Autres'}
+        for category in requested_categories:
+            if category not in valid_categories:
+                return jsonify({'ok': False, 'error': f'Catégorie inconnue: {category}'}), 400
+            allowed_categories.add(category)
+
+        if not allowed_categories:
+            return jsonify({'ok': False, 'error': 'Aucune catégorie valide sélectionnée'}), 400
 
     state['last_scan_path'] = str(scan_path)
 
@@ -447,7 +491,13 @@ def api_scan():
         socketio.emit('scan_started', {'path': str(scan_path)})
 
         try:
-            result = scan_directory(str(scan_path), min_age, min_size, cancel_event=scan_cancel_event)
+            result = scan_directory(
+                str(scan_path),
+                min_age,
+                min_size,
+                cancel_event=scan_cancel_event,
+                allowed_categories=allowed_categories
+            )
         except Exception as exc:  # pragma: no cover - log unexpected errors
             state['scanning'] = False
             socketio.emit('scan_error', {
@@ -469,10 +519,23 @@ def api_scan():
             for candidate in result['candidates']
         ]
 
+        protected_payload = [
+            {
+                'file': entry['path'],
+                'name': entry['name'],
+                'size': entry['size'],
+                'size_h': human_size(entry['size']),
+                'age_days': entry['age'],
+                'category': entry['category'],
+                'keyword': entry['keyword']
+            }
+            for entry in result['protected']
+        ]
+
         stats_payload = {
             k: {
                 'count': v['count'],
-                'size': human_size(v['size'])
+                'size_h': human_size(v['size'])
             }
             for k, v in result['stats'].items()
         }
@@ -481,15 +544,19 @@ def api_scan():
         state['stats'] = stats_payload
         state['candidates'] = result['candidates']
         state['files'] = files_payload
+        state['protected_files'] = protected_payload
         state['scanning'] = False
 
         event_name = 'scan_cancelled' if scan_cancel_event.is_set() else 'scan_finished'
         payload = {
             'count': len(files_payload),
+            'total_files': result['total_files'],
             'files': files_payload,
             'stats': stats_payload,
             'path': str(scan_path),
-            'cancelled': event_name == 'scan_cancelled'
+            'protected': protected_payload,
+            'cancelled': event_name == 'scan_cancelled',
+            'selected_categories': sorted(allowed_categories) if allowed_categories else None
         }
         socketio.emit(event_name, payload)
         socketio.emit('scan_complete', payload)  # compat frontend legacy
@@ -575,7 +642,7 @@ def api_analyze():
     thread = threading.Thread(target=analyze_task)
     thread.start()
 
-    return jsonify({'ok': True, 'status': 'started', 'total': len(selected)})
+    return jsonify({'ok': True, 'status': 'started', 'count': len(selected)})
 
 @app.route('/api/results', methods=['GET'])
 def api_results():
@@ -584,7 +651,8 @@ def api_results():
         'ok': True,
         'results': state['results'],
         'stats': state['stats'],
-        'files': state['files']
+        'files': state['files'],
+        'protected': state['protected_files']
     })
 
 @app.route('/api/delete_by_category', methods=['POST'])
