@@ -15,12 +15,17 @@ import re
 import sys
 import unicodedata
 import zipfile
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 try:
     from PyPDF2 import PdfReader
 except Exception:  # pragma: no cover - PyPDF2 optional fallback
     PdfReader = None  # type: ignore
+
+try:
+    from pdfminer.high_level import extract_text as pdfminer_extract_text
+except Exception:  # pragma: no cover - pdfminer is optional
+    pdfminer_extract_text = None  # type: ignore
 
 FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
 NEEDS_PKGUTIL_SHIM = FORCE_PKGUTIL_SHIM or not hasattr(pkgutil, 'get_loader') or sys.version_info >= (3, 14)
@@ -112,24 +117,90 @@ IGNORED_DIRS = {
 
 SKIP_EXTS = {'.DS_Store', '.localized', '.tmp', '.cache', '.log'}
 
-# 🛡️ MOTS-CLÉS PROTÉGÉS - NE JAMAIS SUPPRIMER
-PROTECTED_KEYWORDS = [
-    'antecedent', 'antécédent', 'medical', 'médical', 'sante', 'santé',
-    'ordonnance', 'consultation', 'suivi', 'traitement', 'resultat', 'résultat',
-    'facture', 'invoice', 'recu', 'reçu', 'receipt',
-    'ticket', 'billet', 'concert', 'reservation', 'réservation',
-    'cv', 'lettre', 'motivation', 'contrat', 'attestation', 'certificat',
-    'important', 'urgent', 'confidentiel'
+# 🛡️ MOTS-CLÉS PROTÉGÉS / PRIORITAIRES
+ALWAYS_KEEP_KEYWORDS = [
+    # Santé / médical
+    'ordonnance', 'compte-rendu', 'compte rendu', 'compte-rendu opératoire',
+    'compte-rendu d\'hospitalisation', 'analyse', 'analyses médicales',
+    'résultats d\'examen', 'résultat d\'analyse', 'compte rendu d\'imagerie',
+    'irm', 'scanner', 'radio', 'radiographie', 'biologie', 'bilan biologique',
+    'sérologie', 'ald', 'affection longue durée', 'certificat médical',
+    'arrêt de travail', 'medical', 'médical', 'santé', 'dossier medical',
+    # Administratif / juridique
+    'attestation', 'certificat', 'justificatif', 'contrat', 'avenant',
+    'conditions générales', 'cgv', 'cgu', 'règlement', 'règlement intérieur',
+    'convocation', 'décision', 'notification', 'déclaration', 'procuration',
+    'impôt', 'impots', 'impôts', 'avis d\'imposition', 'déclaration de revenus',
+    'urssaf', 'cpam', 'sécurité sociale', 'securité sociale', 'pôle emploi',
+    'caf', 'assurance', 'attestation d\'assurance', 'mutuelle', 'prévoyance',
+    # Finance / banque
+    'relevé de compte', 'relevé bancaire', 'relevé de carte', 'rib', 'iban',
+    'virement', 'prélèvement', 'échéancier', 'credit', 'crédit', 'prêt',
+    'contrat de crédit', 'contrat de prêt', 'facture', 'quittance',
+    'note d\'honoraires', 'invoice', 'statement', 'bank statement',
+    'loan agreement', 'credit agreement', 'paiement', 'payment reference',
+    # Identité / état civil
+    'carte nationale d\'identité', 'carte d\'identité', 'cni', 'passeport',
+    'permis de conduire', 'permis', 'carte vitale', 'titre de séjour', 'visa',
+    'acte de naissance', 'acte de mariage', 'acte de décès', 'livret de famille',
+    # Professionnel / études
+    'cv', 'curriculum vitae', 'lettre de motivation', 'candidature', 'portfolio',
+    'diplôme', 'relevé de notes', 'certificat de scolarité', 'certificat de travail',
+    'attestation d\'employeur', 'contrat de travail', 'contrat de stage',
+    'convention de stage', 'bulletin de salaire', 'fiche de paie', 'payslip',
+    'rapport de stage', 'mémoire', 'thèse',
+    # Comptes en ligne / sécurité
+    'mot de passe', 'password', 'login', 'identifiant', 'credentials', '2fa',
+    'mfa', 'otp', 'code de vérification', 'code de sécurité',
+    'code de récupération', 'recovery code', 'backup code', 'clé de récupération',
+    'seed phrase', 'phrase de récupération', 'mnemonic',
+    # Billets / réservations
+    'billet', 'ticket', 'e-ticket', 'eticket', 'boarding pass',
+    'carte d\'embarquement', 'réservation', 'reservation', 'booking',
+    'confirmation de réservation', 'voucher', 'qr code', 'place de concert',
+    'place de spectacle', 'ticketmaster', 'weezevent', 'digitick', 'see tickets',
+    # Identifiants d\'organismes / formulaires sensibles
+    'iban', 'bic', 'swift', 'banque', 'sécurité sociale', 'pole emploi',
+    'mutuelle', 'prevoyance', 'assedic',
 ]
+
+# Inclure les anciens mots-clés importants pour compatibilité
+PROTECTED_KEYWORDS = sorted(set(ALWAYS_KEEP_KEYWORDS + [
+    'antecedent', 'antécédent', 'suivi', 'traitement', 'resultat', 'résultat',
+    'reçu', 'receipt', 'concert', 'réservation', 'lettre', 'motivation',
+    'important', 'urgent', 'confidentiel'
+]))
 
 CRITICAL_CONTENT_RULES = [
     {
-        'label': 'invoice_or_receipt',
-        'reason': 'Invoice / receipt wording detected in the document body.',
+        'label': 'health_medical',
+        'reason': 'Medical or health vocabulary detected.',
         'keywords': [
-            'facture', 'invoice', 'reçu', 'receipt', 'tva', 'taxe', 'montant dû',
-            'amount due', 'total due', 'numéro de facture', 'order reference',
-            'référence commande', 'paiement', 'payment reference'
+            'ordonnance', 'certificat médical', 'analyse', 'résultat d\'analyse',
+            'compte-rendu', 'irm', 'scanner', 'radio', 'radiographie',
+            'biologie', 'bilan biologique', 'sérologie', 'ald',
+            'affection longue durée', 'arrêt de travail', 'dossier medical'
+        ],
+    },
+    {
+        'label': 'administrative',
+        'reason': 'Administrative / legal wording detected (attestation, contract).',
+        'keywords': [
+            'attestation', 'certificat', 'justificatif', 'contrat', 'avenant',
+            'conditions générales', 'cgv', 'cgu', 'convocation', 'décision',
+            'notification', 'déclaration', 'procuration', 'urssaf', 'cpam',
+            'sécurité sociale', 'pôle emploi', 'caf', 'assurance', 'mutuelle',
+            'prévoyance', 'ministere', 'ministère', 'siret', 'sirene'
+        ],
+    },
+    {
+        'label': 'bank_or_finance',
+        'reason': 'Bank / payment statement detected (IBAN, RIB, transfer).',
+        'keywords': [
+            'facture', 'invoice', 'relevé de compte', 'bank statement', 'rib',
+            'iban', 'bic', 'swift', 'virement', 'prélèvement', 'paiement',
+            'payment reference', 'quittance', 'note d\'honoraires', 'credit',
+            'contrat de prêt', 'loan agreement'
         ],
     },
     {
@@ -138,16 +209,8 @@ CRITICAL_CONTENT_RULES = [
         'keywords': [
             'ticket', 'billet', 'boarding pass', 'qr code', 'reservation',
             'réservation', 'check-in', 'seat', 'vol', 'flight', 'train', 'concert',
-            'spectacle', 'booking reference', 'passager', 'passenger'
-        ],
-    },
-    {
-        'label': 'bank_or_finance',
-        'reason': 'Bank / payment statement detected (IBAN, RIB, transfer).',
-        'keywords': [
-            'iban', 'bic', 'swift', 'rib', 'relevé de compte', 'bank account',
-            'account number', 'numéro de compte', 'carte bancaire', 'credit card',
-            'debit card', 'virement', 'transfer', 'banque', 'paiement', 'payment'
+            'spectacle', 'booking reference', 'passager', 'passenger', 'voucher',
+            'ticketmaster', 'weezevent', 'digitick', 'see tickets'
         ],
     },
     {
@@ -155,18 +218,40 @@ CRITICAL_CONTENT_RULES = [
         'reason': 'Credentials or password detected in the text.',
         'keywords': [
             'mot de passe', 'password', 'login', 'identifiant', 'username',
-            '2fa', 'otp', 'code de sécurité', 'security code', 'recovery code',
-            'code de récupération', 'facebook', 'gmail', 'outlook', 'compte',
-            'connexion', 'authenticator'
+            'credentials', '2fa', 'mfa', 'otp', 'code de sécurité',
+            'security code', 'recovery code', 'code de récupération',
+            'backup code', 'seed phrase', 'phrase de récupération', 'mnemonic'
         ],
     },
     {
-        'label': 'administrative',
-        'reason': 'Administrative / legal wording detected (attestation, contract).',
+        'label': 'identity',
+        'reason': 'Identity document detected (ID card, passport, visa).',
         'keywords': [
-            'attestation', 'certificat', 'contrat', 'assurance', 'justificatif',
-            'ministere', 'ministère', 'securité sociale', 'sécurité sociale',
-            'urssaf', 'impots', 'impôts', 'fiscal', 'siret', 'sirene'
+            'carte nationale d\'identité', 'carte d\'identité', 'cni', 'passeport',
+            'permis de conduire', 'carte vitale', 'titre de séjour', 'visa',
+            'acte de naissance', 'acte de mariage', 'acte de décès',
+            'livret de famille'
+        ],
+    },
+    {
+        'label': 'professional',
+        'reason': 'Professional / HR wording detected (CV, payslip, diploma).',
+        'keywords': [
+            'cv', 'curriculum vitae', 'lettre de motivation', 'candidature',
+            'portfolio', 'diplôme', 'relevé de notes', 'certificat de scolarité',
+            'certificat de travail', 'attestation d\'employeur',
+            'contrat de travail', 'contrat de stage', 'convention de stage',
+            'bulletin de salaire', 'fiche de paie', 'payslip', 'rapport de stage',
+            'mémoire', 'thèse'
+        ],
+    },
+    {
+        'label': 'code_or_project',
+        'reason': 'Source code or project dependency detected (never delete automatically).',
+        'keywords': [
+            'package.json', 'requirements.txt', 'pipfile', 'pyproject.toml',
+            'composer.json', 'dockerfile', 'docker-compose.yml', 'makefile',
+            'src', 'project', 'projet', 'code', 'dev'
         ],
     },
 ]
@@ -191,6 +276,20 @@ SCREENSHOT_PATTERNS = [
 
 TEMPORARY_FILE_HINTS = ['tmp', 'temp', 'untitled', 'copy', 'copie', 'test', 'draft']
 ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.tar.gz'}
+CODE_ALWAYS_KEEP_EXTS = {
+    '.py', '.pyw', '.js', '.ts', '.tsx', '.mjs', '.c', '.cpp', '.h', '.hpp',
+    '.java', '.kt', '.swift', '.rb', '.php', '.go', '.rs', '.cs', '.sh', '.ps1',
+    '.bash', '.zsh', '.pl', '.sql', '.scss', '.less', '.vue'
+}
+CODE_FOLDER_HINTS = ['src', 'code', 'project', 'projet', 'projets', 'dev', 'app', 'backend', 'frontend']
+CODE_FILENAME_HINTS = [
+    'package.json', 'requirements.txt', 'pipfile', 'pyproject.toml',
+    'composer.json', 'dockerfile', 'docker-compose.yml', 'makefile',
+    'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock'
+]
+UNTITLED_ARCHIVE_HINTS = ['sans titre', 'sans_titre', 'untitled', 'archive', 'new archive', 'zip.zip']
+TINY_ARCHIVE_BYTES = 2048
+ZIP_LISTING_LIMIT = 40
 
 CATEGORIES = {
     'Images': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic'},
@@ -225,11 +324,15 @@ def _normalize(text: str) -> str:
     return unicodedata.normalize('NFKD', text).casefold()
 
 
+def _tokenize_normalized(normalized_text: str) -> List[str]:
+    return [token for token in re.split(r'[^a-z0-9]+', normalized_text) if token]
+
+
 def is_protected(filename):
     """Vérifie si un fichier contient un mot-clé protégé avec précision."""
 
     normalized_name = _normalize(filename)
-    tokens = [token for token in re.split(r'[^a-z0-9]+', normalized_name) if token]
+    tokens = _tokenize_normalized(normalized_name)
 
     for keyword in PROTECTED_KEYWORDS:
         normalized_keyword = _normalize(keyword)
@@ -244,30 +347,72 @@ def is_protected(filename):
     return False, None
 
 
-def detect_critical_content(preview: Optional[str]) -> Optional[str]:
-    """Détecte des contenus critiques dans l'aperçu texte."""
+def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional[str]:
+    """Détecte des contenus critiques à partir du texte, du nom et du dossier."""
 
-    if not preview:
-        return None
+    def _push_source(text: Optional[str], collector: List[str], token_bucket: List[str]):
+        if not text:
+            return
+        normalized = _normalize(text)
+        if not normalized:
+            return
+        collector.append(normalized)
+        token_bucket.extend(_tokenize_normalized(normalized))
 
-    normalized_preview = _normalize(preview)
+    normalized_sources: List[str] = []
+    tokens: List[str] = []
+
+    _push_source(preview, normalized_sources, tokens)
+    name = file_info.get('name', '')
+    _push_source(name, normalized_sources, tokens)
+
+    path = file_info.get('path')
+    if path:
+        parent = Path(path).parent
+        _push_source(parent.name, normalized_sources, tokens)
+        _push_source(str(parent), normalized_sources, tokens)
+
+    ext = file_info.get('ext', '').lower()
+    category = file_info.get('category') or get_category(ext)
+    normalized_name = _normalize(name)
+    normalized_path = _normalize(path) if path else ''
+
+    if category == 'Code' or ext in CODE_ALWAYS_KEEP_EXTS:
+        return 'Source code or project asset detected (never delete automatically).'
+
+    if any(hint in normalized_path for hint in CODE_FOLDER_HINTS):
+        return 'Code/project folder detected in path (keep).'
+
+    if any(special in normalized_name for special in CODE_FILENAME_HINTS):
+        return 'Critical project manifest detected (keep).'
+
+    if ext in ARCHIVE_EXTENSIONS:
+        archive_members = _list_archive_members(path)
+        for member in archive_members:
+            _push_source(member, normalized_sources, tokens)
+
+    normalized_blob = ' '.join(normalized_sources)
 
     for rule in CRITICAL_CONTENT_RULES:
         for keyword in rule['keywords']:
             normalized_keyword = _normalize(keyword)
-            if normalized_keyword in normalized_preview:
-                return f"{rule['reason']} (keyword '{keyword}')"
+            if len(normalized_keyword) <= SHORT_KEYWORD_MAX_LEN:
+                if normalized_keyword in tokens:
+                    return f"{rule['reason']} (keyword '{keyword}')"
+            else:
+                if normalized_keyword in normalized_blob:
+                    return f"{rule['reason']} (keyword '{keyword}')"
 
     for pattern, reason in CRITICAL_CONTENT_REGEX:
-        if pattern.search(preview):
+        if preview and pattern.search(preview):
             return reason
 
     return None
 
 
 def _looks_like_screenshot(name: str) -> bool:
-    lowered = name.lower()
-    return any(keyword in lowered for keyword in SCREENSHOT_PATTERNS)
+    normalized = _normalize(name)
+    return any(_normalize(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
@@ -293,36 +438,101 @@ def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[s
     return str(parent), neighbors
 
 
+def _list_archive_members(path: Optional[str]) -> List[str]:
+    if not path or not path.endswith('.zip'):
+        return []
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = []
+            for member in archive.namelist():
+                if member.endswith('/'):
+                    continue
+                names.append(Path(member).name)
+                if len(names) >= ZIP_LISTING_LIMIT:
+                    break
+            return names
+    except (OSError, zipfile.BadZipFile):
+        return []
+
+
 def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
     """Return an immediate verdict for trivial cases before invoking the LLM."""
 
     name = file_info.get('name', '')
-    name_lower = name.lower()
     age_days = file_info.get('age', 0)
     ext = file_info.get('ext', '').lower()
     size = file_info.get('size', 0)
     category = file_info.get('category') or get_category(ext)
+    normalized_name = _normalize(name)
+    normalized_stem = _normalize(Path(name).stem)
 
     if _looks_like_screenshot(name):
-        if age_days >= 2 or category == 'Images':
+        screenshot_age = 7 if category == 'Images' else 14
+        if age_days >= screenshot_age:
             return {
                 'importance': 'low',
                 'can_delete': True,
                 'reason': 'Screenshot-style filename matched (safe to delete unless flagged earlier).'
             }
 
-    if any(hint in name_lower for hint in TEMPORARY_FILE_HINTS) and age_days >= 30:
+    if any(_normalize(hint) in normalized_name for hint in TEMPORARY_FILE_HINTS) and age_days >= 30:
         return {
             'importance': 'low',
             'can_delete': True,
             'reason': 'Filename indicates temporary/test content older than 30 days.'
         }
 
-    if ext in ARCHIVE_EXTENSIONS and age_days >= 180 and size < 500 * 1024 * 1024:
+    if ext in ARCHIVE_EXTENSIONS:
+        if size <= TINY_ARCHIVE_BYTES and age_days >= 2:
+            return {
+                'importance': 'low',
+                'can_delete': True,
+                'reason': 'Archive smaller than 2KB (likely empty placeholder).'
+            }
+
+        untitled_hit = any(normalized_stem.startswith(_normalize(hint)) for hint in UNTITLED_ARCHIVE_HINTS)
+        if untitled_hit and age_days >= 30 and size < 10 * 1024 * 1024:
+            return {
+                'importance': 'low',
+                'can_delete': True,
+                'reason': 'Untitled/archive placeholder older than 30 days with tiny size.'
+            }
+
+        if age_days >= 180 and size < 500 * 1024 * 1024:
+            return {
+                'importance': 'low',
+                'can_delete': True,
+                'reason': 'Archive older than 6 months with no protected keywords.'
+            }
+
+    if ext in {'.txt', '.log'} and size < 4096 and age_days >= 30 and not preview:
         return {
             'importance': 'low',
             'can_delete': True,
-            'reason': 'Archive older than 6 months with no protected keywords.'
+            'reason': 'Tiny text/log file older than 30 days with no content preview.'
+        }
+
+    if ext in {'.zip'} and '(copie' in normalized_name and age_days >= 30:
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Archive duplicate marker detected (copy suffix and old date).'
+        }
+
+    if ext in CODE_ALWAYS_KEEP_EXTS:
+        return {
+            'importance': 'high',
+            'can_delete': False,
+            'reason': 'Source code file detected (never auto-delete).'
+        }
+
+    parent_name = Path(file_info.get('path') or '').parent.name.lower()
+    if parent_name in {'node_modules', '__pycache__', '.pytest_cache'} and age_days >= 7:
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Cache/build folder detected (safe to clear).'
         }
 
     if preview and 'draft' in preview.lower() and age_days >= 60:
@@ -400,6 +610,15 @@ def _extract_pdf_preview(path: str, max_chars: int = 600) -> Optional[str]:
                 return preview
         except Exception as exc:
             print(f"⚠️ PyPDF2 preview fallback for {path}: {exc}")
+
+    if pdfminer_extract_text is not None:
+        try:
+            extracted = pdfminer_extract_text(path, maxpages=2)
+            preview = _clean_preview_text(extracted or '', max_chars)
+            if preview:
+                return preview
+        except Exception as exc:
+            print(f"⚠️ pdfminer preview fallback for {path}: {exc}")
 
     try:
         with open(path, 'rb') as handle:
@@ -705,7 +924,7 @@ def analyze_file(file_info, model="llama3:8b"):
     preview_length = len(preview) if preview else 0
     print(f"📝 Preview length for {file_info['name']}: {preview_length}")
 
-    critical_reason = detect_critical_content(preview)
+    critical_reason = detect_critical_content(file_info, preview)
 
     if critical_reason:
         return {

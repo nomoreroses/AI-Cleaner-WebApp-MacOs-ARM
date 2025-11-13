@@ -4,3 +4,4 @@ flask-socketio==5.3.4
 python-socketio[client]==5.9.0
 eventlet==0.33.3
 PyPDF2==3.0.1
+pdfminer.six==20231228

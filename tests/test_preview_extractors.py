@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -119,6 +120,9 @@ class PreviewExtractorTests(unittest.TestCase):
         cls.PdfReader = getattr(cls.module, 'PdfReader', None)
         cls._extract_pdf_preview = staticmethod(cls.module._extract_pdf_preview)
         cls._extract_rtf_preview = staticmethod(cls.module._extract_rtf_preview)
+        cls.detect_critical_content = staticmethod(cls.module.detect_critical_content)
+        cls.apply_local_rules = staticmethod(cls.module.apply_local_rules)
+        cls._looks_like_screenshot = staticmethod(cls.module._looks_like_screenshot)
 
     def _write_temp(self, suffix: str, data: bytes) -> str:
         fd, path = tempfile.mkstemp(suffix=suffix)
@@ -126,10 +130,14 @@ class PreviewExtractorTests(unittest.TestCase):
             handle.write(data)
         return path
 
-    def test_pdf_preview_contains_ticket_reference(self):
-        if self.PdfReader is None:
-            self.skipTest('PyPDF2 not available in test environment')
+    def _write_temp_zip(self, filename: str) -> str:
+        fd, path = tempfile.mkstemp(suffix='.zip')
+        os.close(fd)
+        with zipfile.ZipFile(path, 'w') as archive:
+            archive.writestr(filename, b'Placeholder data')
+        return path
 
+    def test_pdf_preview_contains_ticket_reference(self):
         path = self._write_temp('.pdf', SAMPLE_PDF_BYTES)
         try:
             preview = self._extract_pdf_preview(path, max_chars=200)
@@ -146,6 +154,44 @@ class PreviewExtractorTests(unittest.TestCase):
             self.assertIn('Mot de passe Facebook', preview)
         finally:
             os.unlink(path)
+
+    def test_detects_ticket_keyword_inside_archive_members(self):
+        path = self._write_temp_zip('billet-concert.pdf')
+        try:
+            file_info = {
+                'name': Path(path).name,
+                'path': path,
+                'ext': '.zip',
+                'category': 'Archives',
+                'age': 120,
+                'size': os.path.getsize(path),
+            }
+            reason = self.detect_critical_content(file_info, preview=None)
+            self.assertIsNotNone(reason)
+            self.assertIn('Ticket / reservation', reason)
+        finally:
+            os.unlink(path)
+
+    def test_screenshot_detection_handles_combining_accent(self):
+        name = 'Capture d\u2019e\u0301cran 2025-11-06 \u00e0 10.44.22.png'
+        self.assertTrue(self._looks_like_screenshot(name))
+
+    def test_local_rule_deletes_tiny_untitled_zip(self):
+        file_info = {
+            'name': 'Sans titre 2.zip',
+            'path': '/tmp/Sans titre 2.zip',
+            'ext': '.zip',
+            'age': 45,
+            'size': 1500,
+            'category': 'Archives',
+        }
+        decision = self.apply_local_rules(file_info, preview=None)
+        self.assertIsNotNone(decision)
+        self.assertTrue(decision['can_delete'])
+        self.assertTrue(
+            'Untitled' in decision['reason'] or 'Archive smaller' in decision['reason'],
+            msg=f"Unexpected reason: {decision['reason']}"
+        )
 
 
 if __name__ == '__main__':
