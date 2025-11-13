@@ -939,6 +939,13 @@ def analyze_file(file_info, model="llama3:8b"):
     preview_length = len(preview) if preview else 0
     print(f"📝 Preview length for {file_info['name']}: {preview_length}")
 
+    # Les règles locales basées sur le nom doivent primer avant la détection
+    # de contenu critique pour éviter d'écraser des heuristiques (ex: captures).
+    local_decision = apply_local_rules(file_info, preview)
+
+    if local_decision:
+        return local_decision
+
     critical_reason = detect_critical_content(file_info, preview)
 
     if critical_reason:
@@ -947,11 +954,6 @@ def analyze_file(file_info, model="llama3:8b"):
             'can_delete': False,
             'reason': f'🔒 {critical_reason}'
         }
-
-    local_decision = apply_local_rules(file_info, preview)
-
-    if local_decision:
-        return local_decision
 
     parent_folder, neighbor_files = _list_neighbor_files(file_info)
     neighbor_excerpt = ', '.join(neighbor_files) if neighbor_files else 'No close neighbors listed.'
