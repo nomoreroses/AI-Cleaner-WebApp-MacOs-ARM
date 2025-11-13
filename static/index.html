@@ -120,6 +120,7 @@
             const [candidates, setCandidates] = useState(loadState('candidates', []));
             const [protectedFiles, setProtectedFiles] = useState(loadState('protectedFiles', []));
             const [logs, setLogs] = useState(loadState('logs', []));
+            const [manualPathInput, setManualPathInput] = useState(() => config.path || '');
             
             const logsEndRef = useRef(null);
             const abortController = useRef(null);
@@ -179,6 +180,10 @@
             useEffect(() => {
                 saveState('logs', logs);
             }, [logs]);
+
+            useEffect(() => {
+                setManualPathInput(config.path || '');
+            }, [config.path]);
 
             useEffect(() => {
                 // WebSocket listeners
@@ -332,6 +337,7 @@
 
                     if (data.ok && data.path) {
                         setConfig(prev => ({ ...prev, path: data.path }));
+                        setManualPathInput(data.path);
                         addLog(`📁 Dossier sélectionné: ${data.path}`);
                     } else {
                         addLog('❌ Erreur sélection dossier: ' + (data.error || 'Unknown error'));
@@ -341,13 +347,12 @@
                 }
             };
 
-            const promptFolderSelection = async () => {
-                const manualPath = window.prompt('Enter the folder path to scan (example: /Users/you/Downloads)');
-                if (!manualPath) {
-                    addLog('⚠️ Folder selection canceled');
+            const verifyManualPath = async () => {
+                if (!manualPathInput || manualPathInput.trim().length === 0) {
+                    addLog('⚠️ Enter a folder path first');
                     return;
                 }
-                await selectFolder(manualPath.trim());
+                await selectFolder(manualPathInput.trim());
             };
 
             const startScan = async () => {
@@ -391,6 +396,21 @@
                 }
             };
 
+            const checkAiStatus = async () => {
+                const modelToCheck = (config.model && config.model.trim()) || 'llama3:8b';
+                try {
+                    const response = await fetch(`http://localhost:5000/api/ai_status?model=${encodeURIComponent(modelToCheck)}`);
+                    const data = await response.json();
+                    if (data.ok) {
+                        addLog(`✅ Ollama prêt (${modelToCheck}) via ${data.ollama_url}`);
+                    } else {
+                        addLog(`❌ AI setup: ${data.error || 'Unknown error'}`);
+                    }
+                } catch (error) {
+                    addLog('❌ AI status check failed: ' + error.message);
+                }
+            };
+
             const startAnalyze = async () => {
                 if (!candidates || candidates.length === 0) {
                     addLog('❌ Aucun fichier à analyser. Lancez d\'abord un scan.');
@@ -406,6 +426,7 @@
                     return;
                 }
 
+                const modelToUse = (config.model && config.model.trim()) || 'llama3:8b';
                 setStatus('analyzing');
                 setAnalyzeProgress({ current: 0, total: filesToAnalyze.length, file: '' });
                 addLog(`🧠 Démarrage de l'analyse de ${filesToAnalyze.length} fichiers...`);
@@ -416,7 +437,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             paths: filesToAnalyze.map(file => file.file || file.path || file),
-                            model: config.model
+                            model: modelToUse
                         }),
                         signal: abortController.current.signal
                     });
@@ -571,21 +592,28 @@
                                 
                                 {/* Sélecteur de dossier */}
                                 <div className="space-y-3">
+                                    <label className="block text-sm">Folder to scan</label>
                                     <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="text"
+                                            value={manualPathInput}
+                                            onChange={(e) => setManualPathInput(e.target.value)}
+                                            placeholder="/Users/you/Downloads"
+                                            className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
+                                        />
                                         <button
-                                            onClick={promptFolderSelection}
-                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"
+                                            onClick={verifyManualPath}
+                                            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"
                                         >
-                                            📁 Enter folder path (manual)
-                                        </button>
-                                        <button
-                                            onClick={() => selectFolder()}
-                                            className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition text-sm"
-                                        >
-                                            📂 Use Downloads/default
+                                            ✅ Validate path
                                         </button>
                                     </div>
-
+                                    <button
+                                        onClick={() => selectFolder()}
+                                        className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition text-sm"
+                                    >
+                                        📂 Use Downloads/default
+                                    </button>
                                     {config.path && (
                                         <div className="text-xs text-gray-300 bg-black/20 p-2 rounded break-all">
                                             {config.path}
@@ -622,6 +650,26 @@
                                             onChange={(e) => setConfig({...config, max_files: Math.max(1, parseInt(e.target.value) || 1)})}
                                             className="w-full bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm mb-1">AI model (Ollama)</label>
+                                        <div className="flex flex-col sm:flex-row gap-2">
+                                            <input
+                                                type="text"
+                                                value={config.model}
+                                                onChange={(e) => setConfig({...config, model: e.target.value})}
+                                                className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={checkAiStatus}
+                                                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition text-sm"
+                                            >
+                                                🔎 Check AI setup
+                                            </button>
+                                        </div>
+                                        <p className="text-[11px] text-gray-400 mt-1">Assure-toi que ce modèle est installé via `ollama pull`.</p>
                                     </div>
 
                                     <label className="flex items-center gap-2 text-sm cursor-pointer">

@@ -14,7 +14,7 @@ import pkgutil
 import re
 import sys
 import unicodedata
-from typing import Optional, Set
+from typing import Optional, Set, Tuple
 
 FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
 NEEDS_PKGUTIL_SHIM = FORCE_PKGUTIL_SHIM or not hasattr(pkgutil, 'get_loader') or sys.version_info >= (3, 14)
@@ -70,6 +70,15 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Session HTTP réutilisable
 session = requests.Session()
+
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434').rstrip('/')
+OLLAMA_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '20'))
+
+
+def _ollama_endpoint(path: str) -> str:
+    if not path.startswith('/'):
+        path = '/' + path
+    return f"{OLLAMA_URL}{path}"
 
 # État global
 state = {
@@ -154,6 +163,60 @@ def is_protected(filename):
                 return True, keyword
 
     return False, None
+
+
+def ensure_ollama_ready(model: str) -> None:
+    """Vérifie la disponibilité d'Ollama et du modèle demandé."""
+
+    tags_url = _ollama_endpoint('/api/tags')
+
+    try:
+        resp = session.get(tags_url, timeout=5)
+    except requests.RequestException as exc:  # pragma: no cover - dépend réseau
+        raise RuntimeError(
+            f"Impossible de contacter Ollama sur {OLLAMA_URL}. "
+            "Installez-le via https://ollama.com/download puis lancez `ollama serve`."
+        ) from exc
+
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"Ollama répond HTTP {resp.status_code} sur {OLLAMA_URL}. "
+            "Assurez-vous que `ollama serve` est en cours d'exécution."
+        )
+
+    try:
+        tags_payload = resp.json()
+    except ValueError as exc:  # pragma: no cover - JSON invalide inattendu
+        raise RuntimeError("Réponse inattendue d'Ollama (JSON invalide)") from exc
+
+    available_models = {
+        item.get('name')
+        for item in tags_payload.get('models', [])
+        if item.get('name')
+    }
+
+    if model in available_models:
+        return
+
+    show_url = _ollama_endpoint('/api/show')
+
+    try:
+        show_resp = session.post(show_url, json={'name': model}, timeout=5)
+    except requests.RequestException as exc:  # pragma: no cover
+        raise RuntimeError(
+            f"Impossible d'initialiser le modèle {model} sur Ollama. "
+            "Vérifiez que le service est lancé."
+        ) from exc
+
+    if show_resp.status_code == 404:
+        raise RuntimeError(
+            f"Le modèle '{model}' est absent. Exécutez `ollama pull {model}` puis réessayez."
+        )
+
+    if show_resp.status_code != 200:
+        raise RuntimeError(
+            f"Erreur Ollama lors du chargement du modèle '{model}' (HTTP {show_resp.status_code})."
+        )
 
 def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None, allowed_categories: Optional[Set[str]] = None):
     """Scan rapide avec os.scandir"""
@@ -252,61 +315,73 @@ def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None, all
         'protected': sorted(protected_files, key=lambda x: x['name'].lower())
     }
 
-def call_ollama(prompt, model="llama3:8b"):
+def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str]]:
     """Appel Ollama optimisé"""
-    try:
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 100,
-                "top_k": 10,
-                "top_p": 0.5,
-                "num_ctx": 512,
-                "num_thread": os.cpu_count() or 8,
-                "repeat_penalty": 1.1
-            }
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "num_predict": 100,
+            "top_k": 10,
+            "top_p": 0.5,
+            "num_ctx": 512,
+            "num_thread": os.cpu_count() or 8,
+            "repeat_penalty": 1.1
         }
-        
-        resp = session.post("http://localhost:11434/api/generate", json=payload, timeout=20)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            text = data.get('response', '')
-            
-            print(f"\n🔍 DEBUG Ollama response: {text[:200]}")
-            
-            text = text.strip()
-            
-            if '```json' in text:
-                text = text.split('```json')[1].split('```')[0].strip()
-            elif '```' in text:
-                text = text.split('```')[1].split('```')[0].strip()
-            
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            
-            if start != -1 and end > start:
-                json_str = text[start:end]
-                print(f"🔍 JSON extrait: {json_str}")
-                
-                result = json.loads(json_str)
-                
-                if 'can_delete' in result and 'reason' in result:
-                    return result
-                else:
-                    print(f"❌ JSON invalide (champs manquants): {result}")
-            else:
-                print(f"❌ Pas de JSON trouvé dans: {text}")
-        else:
-            print(f"❌ Erreur HTTP {resp.status_code}")
-            
-        return None
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return None
+    }
+
+    try:
+        resp = session.post(_ollama_endpoint('/api/generate'), json=payload, timeout=OLLAMA_TIMEOUT)
+    except requests.RequestException as exc:
+        error_message = (
+            f"Ollama introuvable sur {OLLAMA_URL}. Lancez `ollama serve` ou installez le modèle {model}."
+        )
+        print(f"❌ {error_message}: {exc}")
+        return None, error_message
+
+    if resp.status_code != 200:
+        try:
+            error_payload = resp.json()
+            detail = error_payload.get('error') or error_payload
+        except ValueError:
+            detail = resp.text[:200]
+        error_message = f"Ollama HTTP {resp.status_code}: {detail}"
+        print(f"❌ {error_message}")
+        return None, error_message
+
+    data = resp.json()
+    text = data.get('response', '')
+
+    print(f"\n🔍 DEBUG Ollama response: {text[:200]}")
+
+    text = text.strip()
+
+    if '```json' in text:
+        text = text.split('```json')[1].split('```')[0].strip()
+    elif '```' in text:
+        text = text.split('```')[1].split('```')[0].strip()
+
+    start = text.find('{')
+    end = text.rfind('}') + 1
+
+    if start != -1 and end > start:
+        json_str = text[start:end]
+        print(f"🔍 JSON extrait: {json_str}")
+
+        result = json.loads(json_str)
+
+        if 'can_delete' in result and 'reason' in result:
+            return result, None
+
+        error_message = f"JSON invalide (champs manquants): {result}"
+        print(f"❌ {error_message}")
+        return None, error_message
+
+    error_message = f"Réponse Ollama sans JSON exploitable: {text[:120]}"
+    print(f"❌ {error_message}")
+    return None, error_message
 
 def analyze_file(file_info, model="llama3:8b"):
     """Analyse un fichier"""
@@ -350,8 +425,8 @@ or
         'prompt': prompt[:150] + '...'
     })
     
-    result = call_ollama(prompt, model)
-    
+    result, error_message = call_ollama(prompt, model)
+
     if result:
         socketio.emit('ai_result', {
             'file': file_info['name'],
@@ -362,7 +437,7 @@ or
         result = {
             'importance': 'unknown',
             'can_delete': False,
-            'reason': '⚠️ Analyse échouée - CONSERVÉ par sécurité'
+            'reason': f"⚠️ Analyse indisponible - {error_message or 'IA locale inaccessible'}"
         }
         socketio.emit('ai_result', {
             'file': file_info['name'],
@@ -603,6 +678,13 @@ def api_analyze():
     if not selected:
         return jsonify({'ok': False, 'error': 'Aucun fichier à analyser'}), 400
 
+    try:
+        ensure_ollama_ready(model)
+    except RuntimeError as exc:
+        message = str(exc)
+        socketio.emit('analyze_error', {'error': message})
+        return jsonify({'ok': False, 'error': message}), 503
+
     def analyze_task():
         analyze_cancel_event.clear()
         state['analyzing'] = True
@@ -653,6 +735,28 @@ def api_results():
         'stats': state['stats'],
         'files': state['files'],
         'protected': state['protected_files']
+    })
+
+
+@app.route('/api/ai_status', methods=['GET'])
+def api_ai_status():
+    """Vérifie la configuration locale d'Ollama pour l'IA."""
+    model = request.args.get('model', 'llama3:8b')
+
+    try:
+        ensure_ollama_ready(model)
+    except RuntimeError as exc:
+        return jsonify({
+            'ok': False,
+            'model': model,
+            'ollama_url': OLLAMA_URL,
+            'error': str(exc)
+        }), 503
+
+    return jsonify({
+        'ok': True,
+        'model': model,
+        'ollama_url': OLLAMA_URL
     })
 
 @app.route('/api/delete_by_category', methods=['POST'])
