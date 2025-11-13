@@ -7,9 +7,13 @@ API + WebSocket pour updates temps réel
 # PATCH pour Python 3.14 : Restaurer pkgutil.get_loader
 import pkgutil
 import sys
+
 if not hasattr(pkgutil, 'get_loader'):
     import importlib.util
+
     def _get_loader(name):
+        """Compatibilité Python 3.14 pour pkgutil.get_loader."""
+
         try:
             spec = importlib.util.find_spec(name)
         except (ValueError, ImportError):
@@ -17,7 +21,9 @@ if not hasattr(pkgutil, 'get_loader'):
             # ou ImportError si le module n'existe pas. Dans ces cas, on renvoie None
             # pour imiter l'ancien comportement de pkgutil.get_loader.
             return None
+
         return spec.loader if spec else None
+
     pkgutil.get_loader = _get_loader
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
