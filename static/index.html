@@ -433,12 +433,17 @@
                 abortController.current = new AbortController();
 
                 try {
+                    const minAgeDays = Number(config.min_age_days) || 0;
+                    const minSizeMb = Number(config.min_size_mb) || 0;
+
                     const response = await apiFetch('/api/scan', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             path: config.path,
-                            categories: selectedCategories
+                            categories: selectedCategories,
+                            min_age_days: minAgeDays,
+                            min_size_mb: minSizeMb
                         }),
                         signal: abortController.current.signal
                     });

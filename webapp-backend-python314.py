@@ -315,6 +315,25 @@ def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None, all
         'protected': sorted(protected_files, key=lambda x: x['name'].lower())
     }
 
+def _load_json_loose(json_str: str) -> Tuple[Optional[dict], Optional[Exception]]:
+    """Tente de charger du JSON puis applique de petites réparations si besoin."""
+
+    try:
+        return json.loads(json_str), None
+    except json.JSONDecodeError as exc:
+        cleaned = json_str.replace("\\'", "'")
+
+        if cleaned != json_str:
+            try:
+                repaired = json.loads(cleaned)
+                print("🛠️ JSON nettoyé (apostrophes dé-échappées)")
+                return repaired, None
+            except json.JSONDecodeError as exc2:
+                return None, exc2
+
+        return None, exc
+
+
 def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str]]:
     """Appel Ollama optimisé"""
     payload = {
@@ -375,10 +394,10 @@ def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str
         json_str = text[start:end]
         print(f"🔍 JSON extrait: {json_str}")
 
-        try:
-            result = json.loads(json_str)
-        except json.JSONDecodeError as exc:
-            error_message = f"Réponse Ollama JSON invalide: {exc}"
+        result, decode_error = _load_json_loose(json_str)
+
+        if decode_error:
+            error_message = f"Réponse Ollama JSON invalide: {decode_error}"
             print(f"❌ {error_message}")
             return None, error_message
 
@@ -552,8 +571,15 @@ def api_scan():
     if not scan_path.exists() or not scan_path.is_dir():
         return jsonify({'ok': False, 'error': f'Dossier introuvable: {scan_path}'}), 400
 
-    min_age = data.get('min_age_days', 30)
-    min_size = data.get('min_size_mb', 20)
+    try:
+        min_age = max(0, int(data.get('min_age_days', 30)))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'min_age_days invalide'}), 400
+
+    try:
+        min_size = max(0, float(data.get('min_size_mb', 20)))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'min_size_mb invalide'}), 400
     requested_categories = data.get('categories') or []
 
     allowed_categories = None
