@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 AI Cleaner - WebApp v3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .thinking { animation: pulse 1.5s ease-in-out infinite; }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        
+        /* Empêcher le scroll auto */
+        .no-auto-scroll {
+            overflow-anchor: none;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white">
+    <div id="app"></div>
+
+    <!-- React et ReactDOM AVANT Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // WebSocket connection
+        const socket = io('http://localhost:5000');
+
+        // Fonction pour persister l'état
+        const saveState = (key, value) => {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {
+                console.error('Erreur sauvegarde état:', e);
+            }
+        };
+
+        const loadState = (key, defaultValue) => {
+            try {
+                const saved = localStorage.getItem(key);
+                return saved ? JSON.parse(saved) : defaultValue;
+            } catch (e) {
+                return defaultValue;
+            }
+        };
+
+        function App() {
+            const [status, setStatus] = useState(loadState('status', 'idle')); // idle, scanning, analyzing, complete
+            const [config, setConfig] = useState(loadState('config', {
+                path: '',
+                min_age_days: 0,
+                min_size_mb: 0,
+                max_files: 100,
+                model: 'llama3:8b',
+                exclude_audio: false,
+                exclude_images: false,
+                exclude_videos: false,
+                delete_empty: true,
+                organize_kept_files: true,
+                auto_scroll: true
+            }));
+            
+            const [quickDeleteCategories, setQuickDeleteCategories] = useState(loadState('quickDeleteCategories', {
+                'Installers': false,
+                'Archives': false,
+                'Images': false,
+                'Documents': false,
+                'Audio': false,
+                'Videos': false,
+                'Autres': false
+            }));
+            
+            const [scanProgress, setScanProgress] = useState(loadState('scanProgress', { scanned: 0, message: '' }));
+            const [analyzeProgress, setAnalyzeProgress] = useState(loadState('analyzeProgress', { current: 0, total: 0, file: '' }));
+            const [aiThinking, setAiThinking] = useState(null);
+            const [results, setResults] = useState(loadState('results', { can_delete: [], should_keep: [], need_review: [] }));
+            const [stats, setStats] = useState(loadState('stats', null));
+            const [logs, setLogs] = useState(loadState('logs', []));
+            
+            const logsEndRef = useRef(null);
+            const abortController = useRef(null);
+
+            // Sauvegarder l'état à chaque changement
+            useEffect(() => {
+                saveState('status', status);
+            }, [status]);
+
+            useEffect(() => {
+                saveState('config', config);
+            }, [config]);
+
+            useEffect(() => {
+                saveState('quickDeleteCategories', quickDeleteCategories);
+            }, [quickDeleteCategories]);
+
+            useEffect(() => {
+                saveState('scanProgress', scanProgress);
+            }, [scanProgress]);
+
+            useEffect(() => {
+                saveState('analyzeProgress', analyzeProgress);
+            }, [analyzeProgress]);
+
+            useEffect(() => {
+                saveState('results', results);
+            }, [results]);
+
+            useEffect(() => {
+                saveState('stats', stats);
+            }, [stats]);
+
+            useEffect(() => {
+                saveState('logs', logs);
+            }, [logs]);
+
+            useEffect(() => {
+                // WebSocket listeners
+                socket.on('connected', () => addLog('✅ Connecté au serveur'));
+                
+                socket.on('scan_started', (data) => {
+                    setStatus('scanning');
+                    addLog(`🔍 Scan démarré: ${data.path}`);
+                });
+                
+                socket.on('scan_progress', (data) => {
+                    setScanProgress(data);
+                });
+                
+                // CORRIGÉ: scan_finished au lieu de scan_complete
+                socket.on('scan_finished', (data) => {
+                    setStatus('idle');
+                    setStats({
+                        total_files: data.count,
+                        candidates: data.count,
+                        files: data.files, // Important pour l'analyse
+                        stats: data.stats
+                    });
+                    addLog(`✅ Scan terminé: ${data.count} fichiers trouvés`);
+                });
+                
+                socket.on('analyze_progress', (data) => {
+                    setAnalyzeProgress(prev => ({ 
+                        current: data.current, 
+                        total: data.total, 
+                        file: data.file 
+                    }));
+                    
+                    // Log les décisions en temps réel
+                    if (data.decision === 'DELETE') {
+                        addLog({
+                            message: `🟢 SUPPRIMER: ${data.file}`,
+                            detail: data.reason,
+                            color: 'text-green-400'
+                        });
+                    } else if (data.decision === 'KEEP') {
+                        addLog({
+                            message: `🔵 CONSERVER: ${data.file}`,
+                            detail: data.reason,
+                            color: 'text-blue-400'
+                        });
+                    } else if (data.decision === 'REVIEW') {
+                        addLog({
+                            message: `🟡 REVISION: ${data.file}`,
+                            detail: data.reason,
+                            color: 'text-yellow-400'
+                        });
+                    }
+                });
+                
+                // CORRIGÉ: Gestion des résultats d'analyse
+                socket.on('analyze_complete', (data) => {
+                    setStatus('complete');
+                    
+                    // Organiser les résultats par décision
+                    const can_delete = data.results.filter(r => r.decision === 'DELETE');
+                    const should_keep = data.results.filter(r => r.decision === 'KEEP');
+                    const need_review = data.results.filter(r => r.decision === 'REVIEW');
+                    
+                    setResults({
+                        can_delete: can_delete,
+                        should_keep: should_keep,
+                        need_review: need_review
+                    });
+                    
+                    addLog(`✅ Analyse terminée: ${can_delete.length} à supprimer, ${should_keep.length} à conserver, ${need_review.length} à réviser`);
+                });
+                
+                socket.on('file_deleted', (data) => {
+                    addLog(`🗑️ Supprimé: ${data.path.split('/').pop()}`);
+                });
+
+                socket.on('deletion_complete', (data) => {
+                    addLog(`✅ Suppression terminée: ${data.deleted} fichiers supprimés (${data.size_freed_h} libérés)`);
+                });
+
+                // Cleanup à la fermeture de la page
+                const handleUnload = () => {
+                    fetch('http://localhost:5000/api/stop', { method: 'POST' })
+                        .catch(() => {}); // Ignore les erreurs
+                };
+                
+                window.addEventListener('beforeunload', handleUnload);
+
+                return () => {
+                    socket.off('connected');
+                    socket.off('scan_started');
+                    socket.off('scan_progress');
+                    socket.off('scan_finished');
+                    socket.off('analyze_progress');
+                    socket.off('analyze_complete');
+                    socket.off('file_deleted');
+                    socket.off('deletion_complete');
+                    window.removeEventListener('beforeunload', handleUnload);
+                };
+            }, []);
+
+            useEffect(() => {
+                if (config.auto_scroll && logsEndRef.current) {
+                    logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, [logs, config.auto_scroll]);
+
+            const addLog = (messageOrObj) => {
+                if (typeof messageOrObj === 'string') {
+                    setLogs(prev => [...prev, { 
+                        time: new Date().toLocaleTimeString(), 
+                        message: messageOrObj,
+                        color: 'text-white'
+                    }]);
+                } else {
+                    setLogs(prev => [...prev, { 
+                        time: new Date().toLocaleTimeString(), 
+                        ...messageOrObj 
+                    }]);
+                }
+            };
+
+            const formatSize = (bytes) => {
+                if (bytes < 1024) return bytes + 'B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+                if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+                return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'GB';
+            };
+
+            const selectFolder = async () => {
+                try {
+                    const response = await fetch('http://localhost:5000/api/select_folder', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.ok && data.path) {
+                        setConfig({ ...config, path: data.path });
+                        addLog(`📁 Dossier sélectionné: ${data.path}`);
+                    } else {
+                        addLog('❌ Erreur sélection dossier: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    addLog('❌ Erreur sélection dossier: ' + error.message);
+                }
+            };
+
+            const startScan = async () => {
+                if (!config.path) {
+                    addLog('❌ Sélectionne d\'abord un dossier');
+                    return;
+                }
+
+                abortController.current = new AbortController();
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: config.path
+                        }),
+                        signal: abortController.current.signal
+                    });
+                    
+                    const data = await response.json();
+                    if (!data.ok) {
+                        addLog('❌ Erreur scan: ' + data.error);
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        addLog('❌ Erreur scan: ' + error.message);
+                    }
+                }
+            };
+
+            const startAnalyze = async () => {
+                if (!stats || !stats.files || stats.files.length === 0) {
+                    addLog('❌ Aucun fichier à analyser. Lancez d\'abord un scan.');
+                    return;
+                }
+
+                abortController.current = new AbortController();
+                
+                // Utiliser les fichiers du scan
+                const filesToAnalyze = stats.files.slice(0, config.max_files);
+                
+                setStatus('analyzing');
+                setAnalyzeProgress({ current: 0, total: filesToAnalyze.length, file: '' });
+                addLog(`🧠 Démarrage de l'analyse de ${filesToAnalyze.length} fichiers...`);
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            paths: filesToAnalyze
+                        }),
+                        signal: abortController.current.signal
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Erreur HTTP: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.ok) {
+                        addLog(`✅ Analyse API terminée: ${data.count} fichiers traités`);
+                    } else {
+                        addLog('❌ Erreur analyse: ' + data.error);
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        addLog('❌ Erreur analyse: ' + error.message);
+                        setStatus('idle');
+                    }
+                }
+            };
+
+            const stopProcess = async () => {
+                if (abortController.current) {
+                    abortController.current.abort();
+                }
+                
+                try {
+                    await fetch('http://localhost:5000/api/stop', {
+                        method: 'POST'
+                    });
+                    addLog('⏹️ Processus arrêté');
+                    setStatus('idle');
+                } catch (error) {
+                    addLog('❌ Erreur arrêt: ' + error.message);
+                }
+            };
+
+            const restartProcess = () => {
+                // Reset tout
+                setStatus('idle');
+                setScanProgress({ scanned: 0, message: '' });
+                setAnalyzeProgress({ current: 0, total: 0, file: '' });
+                setResults({ can_delete: [], should_keep: [], need_review: [] });
+                setStats(null);
+                setLogs([]);
+                setAiThinking(null);
+                
+                // Clear localStorage
+                localStorage.clear();
+                
+                addLog('🔄 Redémarrage - État réinitialisé');
+            };
+
+            const quickDeleteByCategory = async () => {
+                const selected = Object.keys(quickDeleteCategories).filter(k => quickDeleteCategories[k]);
+                
+                if (selected.length === 0) {
+                    addLog('⚠️ Aucune catégorie sélectionnée');
+                    return;
+                }
+                
+                if (!confirm(`Supprimer TOUS les fichiers des catégories: ${selected.join(', ')} ?`)) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/delete_by_category', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ categories: selected })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.ok) {
+                        addLog(`✅ Suppression rapide: ${data.deleted} fichiers (${data.size_freed_h} libérés)`);
+                        
+                        if (data.errors > 0) {
+                            addLog(`⚠️ ${data.errors} erreurs`);
+                        }
+                    } else {
+                        addLog('❌ Erreur suppression: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog('❌ Erreur suppression: ' + error.message);
+                }
+            };
+
+            const deleteSelected = async () => {
+                if (results.can_delete.length === 0) {
+                    addLog('⚠️ Aucun fichier à supprimer');
+                    return;
+                }
+                
+                if (!confirm(`Supprimer ${results.can_delete.length} fichiers ?`)) {
+                    return;
+                }
+                
+                const paths = results.can_delete.map(r => r.file);
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            files: paths,
+                            simulate: false
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.ok) {
+                        addLog(`✅ Supprimés: ${data.deleted} fichiers (${data.size_freed_h} libérés)`);
+                        
+                        if (data.errors > 0) {
+                            addLog(`⚠️ ${data.errors} erreurs`);
+                        }
+                        
+                        // Mettre à jour les résultats
+                        setResults({
+                            ...results,
+                            can_delete: []
+                        });
+                    } else {
+                        addLog('❌ Erreur suppression: ' + data.error);
+                    }
+                } catch (error) {
+                    addLog('❌ Erreur suppression: ' + error.message);
+                }
+            };
+
+            return (
+                <div className="p-6">
+                    {/* Header */}
+                    <div className="mb-6">
+                        <h1 className="text-4xl font-bold mb-2">🤖 AI Cleaner v3.0</h1>
+                        <p className="text-gray-300">Nettoyage intelligent avec IA locale</p>
+                    </div>
+
+                    {/* Layout 3 colonnes */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Colonne 1: Options & Scan */}
+                        <div className="space-y-6">
+                            {/* Configuration */}
+                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                                <h2 className="text-xl font-bold mb-4">⚙️ Options</h2>
+                                
+                                {/* Sélecteur de dossier */}
+                                <div className="space-y-3">
+                                    <button 
+                                        onClick={selectFolder}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"
+                                    >
+                                        📁 Choisir un dossier
+                                    </button>
+                                    
+                                    {config.path && (
+                                        <div className="text-xs text-gray-300 bg-black/20 p-2 rounded break-all">
+                                            {config.path}
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-sm mb-1">Fichiers max à analyser</label>
+                                        <input 
+                                            type="number" 
+                                            min="1"
+                                            value={config.max_files}
+                                            onChange={(e) => setConfig({...config, max_files: Math.max(1, parseInt(e.target.value) || 1)})}
+                                            className="w-full bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
+                                        />
+                                    </div>
+
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input 
+                                            type="checkbox"
+                                            checked={config.auto_scroll}
+                                            onChange={(e) => setConfig({...config, auto_scroll: e.target.checked})}
+                                            className="w-4 h-4"
+                                        />
+                                        Auto-scroll des logs
+                                    </label>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="mt-4 space-y-2">
+                                    <button 
+                                        onClick={startScan}
+                                        disabled={status === 'scanning' || !config.path}
+                                        className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                    >
+                                        🔍 Scanner
+                                    </button>
+
+                                    <button 
+                                        onClick={startAnalyze}
+                                        disabled={status === 'analyzing' || !stats || !stats.files || stats.files.length === 0}
+                                        className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                    >
+                                        🧠 Analyser avec IA
+                                    </button>
+
+                                    {(status === 'scanning' || status === 'analyzing') && (
+                                        <button 
+                                            onClick={stopProcess}
+                                            className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                        >
+                                            ⏹️ Stop
+                                        </button>
+                                    )}
+
+                                    <button 
+                                        onClick={restartProcess}
+                                        className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                    >
+                                        🔄 Restart
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Stats */}
+                            {stats && (
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                                    <h2 className="text-xl font-bold mb-3">📊 Statistiques</h2>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span>Total fichiers:</span>
+                                            <span className="font-bold">{stats.total_files}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Pour analyse:</span>
+                                            <span className="font-bold">{Math.min(stats.total_files, config.max_files)}</span>
+                                        </div>
+                                        {stats.stats && Object.entries(stats.stats).map(([category, stat]) => (
+                                            <div key={category} className="flex justify-between">
+                                                <span>{category}:</span>
+                                                <span>{stat.count} fichiers ({stat.size_h})</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Colonne 2: Résultats & Actions */}
+                        <div className="space-y-6">
+                            {/* Suppression rapide */}
+                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                                <h2 className="text-xl font-bold mb-4">⚡ Suppression Rapide</h2>
+                                
+                                {stats && stats.stats ? (
+                                    <div>
+                                        <p className="text-xs text-gray-400 mb-3">Coche les catégories à supprimer directement :</p>
+                                        
+                                        <div className="space-y-2">
+                                            {Object.keys(quickDeleteCategories).map(category => {
+                                                const categoryStats = stats.stats[category];
+                                                if (!categoryStats || categoryStats.count === 0) return null;
+                                                
+                                                return (
+                                                    <label key={category} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-2 rounded">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={quickDeleteCategories[category]}
+                                                            onChange={(e) => setQuickDeleteCategories({
+                                                                ...quickDeleteCategories,
+                                                                [category]: e.target.checked
+                                                            })}
+                                                            className="w-4 h-4"
+                                                        />
+                                                        <span className="flex-1 text-sm">
+                                                            {category} ({categoryStats.count} - {categoryStats.size_h})
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        
+                                        <button 
+                                            onClick={quickDeleteByCategory}
+                                            className="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                        >
+                                            🗑️ Supprimer les catégories cochées
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-400">Lance un scan pour voir les catégories</p>
+                                )}
+                            </div>
+
+                            {/* Progress Scan */}
+                            {status === 'scanning' && (
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
+                                    <h2 className="text-xl font-bold mb-4">🔍 Scan en cours</h2>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-sm">
+                                            <span>{scanProgress.message}</span>
+                                            <span>{scanProgress.scanned} fichiers</span>
+                                        </div>
+                                        <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                                            <div className="bg-blue-500 h-full rounded-full thinking" style={{width: '100%'}}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Progress Analyse */}
+                            {status === 'analyzing' && (
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
+                                    <h2 className="text-xl font-bold mb-4">🧠 Analyse IA</h2>
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                                <span>Progression</span>
+                                                <span>{analyzeProgress.current} / {analyzeProgress.total}</span>
+                                            </div>
+                                            <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                                                <div 
+                                                    className="bg-purple-500 h-full rounded-full transition-all duration-300" 
+                                                    style={{width: `${(analyzeProgress.current / analyzeProgress.total) * 100}%`}}
+                                                ></div>
+                                            </div>
+                                        </div>
+
+                                        <div className="text-xs text-gray-300 truncate">
+                                            {analyzeProgress.file}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Résultats Analyse */}
+                            {status === 'complete' && (
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
+                                    <div className="grid grid-cols-3 gap-4 mb-4 text-center">
+                                        <div className="bg-green-500/20 p-3 rounded-lg">
+                                            <div className="text-2xl font-bold text-green-400">{results.can_delete.length}</div>
+                                            <div className="text-xs">À supprimer</div>
+                                        </div>
+                                        <div className="bg-blue-500/20 p-3 rounded-lg">
+                                            <div className="text-2xl font-bold text-blue-400">{results.should_keep.length}</div>
+                                            <div className="text-xs">À conserver</div>
+                                        </div>
+                                        <div className="bg-yellow-500/20 p-3 rounded-lg">
+                                            <div className="text-2xl font-bold text-yellow-400">{results.need_review.length}</div>
+                                            <div className="text-xs">À réviser</div>
+                                        </div>
+                                    </div>
+                                    
+                                    {results.can_delete.length > 0 && (
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-bold">🟢 Suppression ({results.can_delete.length})</h3>
+                                            <button 
+                                                onClick={deleteSelected}
+                                                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                            >
+                                                🗑️ Tout supprimer
+                                            </button>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                                        {results.can_delete.slice(0, 10).map((r, i) => (
+                                            <div key={i} className="p-3 bg-black/30 rounded-lg border border-green-500/20">
+                                                <div className="font-bold text-green-400 text-sm truncate">{r.name}</div>
+                                                <div className="text-xs text-gray-300 mt-1">
+                                                    {r.size_h} | {r.age_days}j | {r.category}
+                                                </div>
+                                                <div className="text-xs text-gray-400 mt-2">
+                                                    💡 {r.reason}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {results.can_delete.length > 10 && (
+                                            <div className="text-center text-xs text-gray-400">
+                                                ... et {results.can_delete.length - 10} autres fichiers
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Colonne 3: Logs */}
+                        <div className="space-y-6">
+                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                                <h2 className="text-xl font-bold mb-4">📜 Logs</h2>
+                                <div className={`bg-black/40 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-xs ${!config.auto_scroll ? 'no-auto-scroll' : ''}`}>
+                                    {logs.map((log, i) => (
+                                        <div key={i} className="mb-2 slide-in">
+                                            <div className={log.color || 'text-white'}>
+                                                <span className="text-gray-500">[{log.time}]</span> {log.message}
+                                            </div>
+                                            {log.detail && (
+                                                <div className="text-xs text-gray-400 ml-12 mt-1">
+                                                    💡 {log.detail}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {config.auto_scroll && <div ref={logsEndRef} />}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('app'));
+    </script>
+</body>
+</html>
