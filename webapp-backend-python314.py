@@ -10,7 +10,13 @@ import sys
 if not hasattr(pkgutil, 'get_loader'):
     import importlib.util
     def _get_loader(name):
-        spec = importlib.util.find_spec(name)
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ValueError, ImportError):
+            # Python 3.14 peut lever ValueError si __spec__ est None (ex: __main__)
+            # ou ImportError si le module n'existe pas. Dans ces cas, on renvoie None
+            # pour imiter l'ancien comportement de pkgutil.get_loader.
+            return None
         return spec.loader if spec else None
     pkgutil.get_loader = _get_loader
 
