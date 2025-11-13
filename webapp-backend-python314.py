@@ -15,7 +15,12 @@ import re
 import sys
 import unicodedata
 import zipfile
-from typing import Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
+
+try:
+    from PyPDF2 import PdfReader
+except Exception:  # pragma: no cover - PyPDF2 optional fallback
+    PdfReader = None  # type: ignore
 
 FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
 NEEDS_PKGUTIL_SHIM = FORCE_PKGUTIL_SHIM or not hasattr(pkgutil, 'get_loader') or sys.version_info >= (3, 14)
@@ -173,6 +178,20 @@ CRITICAL_CONTENT_REGEX = [
 
 SHORT_KEYWORD_MAX_LEN = 3
 
+SCREENSHOT_PATTERNS = [
+    'capture d\'écran',
+    'capture d’écran',
+    'capture d\'ecran',
+    'screen shot',
+    'screenshot',
+    'スクリーンショット',
+    '截圖',
+    'screencap'
+]
+
+TEMPORARY_FILE_HINTS = ['tmp', 'temp', 'untitled', 'copy', 'copie', 'test', 'draft']
+ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.tar.gz'}
+
 CATEGORIES = {
     'Images': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic'},
     'Videos': {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv'},
@@ -246,6 +265,76 @@ def detect_critical_content(preview: Optional[str]) -> Optional[str]:
     return None
 
 
+def _looks_like_screenshot(name: str) -> bool:
+    lowered = name.lower()
+    return any(keyword in lowered for keyword in SCREENSHOT_PATTERNS)
+
+
+def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
+    path = file_info.get('path')
+    if not path:
+        return 'unknown', []
+
+    target = Path(path)
+    parent = target.parent
+    neighbors: List[str] = []
+
+    try:
+        entries = sorted(parent.iterdir(), key=lambda p: p.name.lower())
+        for entry in entries:
+            if entry.name == target.name:
+                continue
+            neighbors.append(entry.name)
+            if len(neighbors) >= max_neighbors:
+                break
+    except OSError:
+        return str(parent), neighbors
+
+    return str(parent), neighbors
+
+
+def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
+    """Return an immediate verdict for trivial cases before invoking the LLM."""
+
+    name = file_info.get('name', '')
+    name_lower = name.lower()
+    age_days = file_info.get('age', 0)
+    ext = file_info.get('ext', '').lower()
+    size = file_info.get('size', 0)
+    category = file_info.get('category') or get_category(ext)
+
+    if _looks_like_screenshot(name):
+        if age_days >= 2 or category == 'Images':
+            return {
+                'importance': 'low',
+                'can_delete': True,
+                'reason': 'Screenshot-style filename matched (safe to delete unless flagged earlier).'
+            }
+
+    if any(hint in name_lower for hint in TEMPORARY_FILE_HINTS) and age_days >= 30:
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Filename indicates temporary/test content older than 30 days.'
+        }
+
+    if ext in ARCHIVE_EXTENSIONS and age_days >= 180 and size < 500 * 1024 * 1024:
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Archive older than 6 months with no protected keywords.'
+        }
+
+    if preview and 'draft' in preview.lower() and age_days >= 60:
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Text preview indicates an old draft with no critical keywords.'
+        }
+
+    return None
+
+
 def _clean_preview_text(text: str, max_chars: int = 600) -> Optional[str]:
     if not text:
         return None
@@ -294,6 +383,24 @@ def _extract_docx_preview(path: str, max_chars: int = 600) -> Optional[str]:
 
 
 def _extract_pdf_preview(path: str, max_chars: int = 600) -> Optional[str]:
+    if PdfReader is not None:
+        try:
+            reader = PdfReader(path)
+            text_parts: List[str] = []
+
+            for page in reader.pages[:3]:
+                page_text = page.extract_text() or ''
+                text_parts.append(page_text)
+                if len(' '.join(text_parts)) >= max_chars * 2:
+                    break
+
+            combined = ' '.join(text_parts)
+            preview = _clean_preview_text(combined, max_chars)
+            if preview:
+                return preview
+        except Exception as exc:
+            print(f"⚠️ PyPDF2 preview fallback for {path}: {exc}")
+
     try:
         with open(path, 'rb') as handle:
             data = handle.read(131072)
@@ -595,6 +702,9 @@ def analyze_file(file_info, model="llama3:8b"):
         }
 
     preview = extract_text_preview(file_info)
+    preview_length = len(preview) if preview else 0
+    print(f"📝 Preview length for {file_info['name']}: {preview_length}")
+
     critical_reason = detect_critical_content(preview)
 
     if critical_reason:
@@ -604,14 +714,23 @@ def analyze_file(file_info, model="llama3:8b"):
             'reason': f'🔒 {critical_reason}'
         }
 
+    local_decision = apply_local_rules(file_info, preview)
+
+    if local_decision:
+        return local_decision
+
+    parent_folder, neighbor_files = _list_neighbor_files(file_info)
+    neighbor_excerpt = ', '.join(neighbor_files) if neighbor_files else 'No close neighbors listed.'
+
     if preview:
         preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
     else:
         preview_section = (
-            "No textual preview is available (likely image/audio/archive)."
+            "No textual preview is available (likely binary/image/archive)."
             " Use metadata hints (filename patterns, extension, age, size,"
-            " category) to decide. If metadata clearly shows temporary/log/"
-            "screenshot/test content you may delete; otherwise stay cautious.\n"
+            " category, parent folder, and nearby filenames) to decide."
+            " If metadata clearly shows temporary/log/screenshot/test content you may delete;"
+            " otherwise stay cautious.\n"
         )
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
@@ -622,6 +741,9 @@ INPUT METADATA (use this when the preview gives little signal):
 - Size: {human_size(file_info['size'])}
 - Age: {file_info['age']} days
 - Category: {file_info['category']}
+- Preview length: {preview_length} characters
+- Parent folder: {parent_folder}
+- Neighbor files: {neighbor_excerpt}
 
 TEXT PREVIEW (top priority):
 {preview_section}
@@ -632,7 +754,8 @@ STRICT NON-NEGOTIABLE RULES (content outranks filenames):
 3. Passwords, logins, credentials, recovery codes, OTP/2FA, or account access details -> importance="high", can_delete=false.
 4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, and medical records -> importance="high", can_delete=false.
 5. Only answer "importance":"unknown" when BOTH preview and metadata fail to indicate whether the file is safe or critical. Lack of preview alone is not enough if the filename/metadata are descriptive.
-6. Content > metadata > filename. Still, when the preview is absent you must reason from metadata/filename instead of defaulting to unknown.
+6. Content > metadata > filename. Still, when the preview is absent you must reason from metadata/filename/folder neighbors instead of defaulting to unknown.
+7. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
 
 DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
 - Content or metadata clearly points to temporary/cache/log/screenshot/test/duplicate material.
