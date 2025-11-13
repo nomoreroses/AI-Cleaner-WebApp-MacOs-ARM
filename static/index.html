@@ -38,8 +38,20 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        const inferApiBase = () => {
+            const origin = window.location.origin;
+            if (origin && origin.startsWith('http')) {
+                return origin.replace(/\/$/, '');
+            }
+            return 'http://localhost:5000';
+        };
+
+        const API_BASE = inferApiBase();
+        const apiUrl = (path = '/') => `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+        const apiFetch = (path, options = {}) => fetch(apiUrl(path), options);
+
         // WebSocket connection
-        const socket = io('http://localhost:5000');
+        const socket = io(API_BASE, { transports: ['websocket', 'polling'] });
 
         const FILE_TYPE_OPTIONS = [
             { key: 'images', label: 'Images', category: 'Images', emoji: '🖼️' },
@@ -195,6 +207,7 @@
                     setProtectedFiles([]);
                     setStats(null);
                     setScanProgress({ scanned: 0, message: 'Scan démarré...' });
+                    setAiThinking(null);
                     addLog(`🔍 Scan démarré: ${data.path}`);
                 });
 
@@ -220,12 +233,27 @@
                     setStatus('idle');
                     addLog('⚠️ Scan annulé');
                 });
-                
+
+                socket.on('scan_error', (data) => {
+                    setStatus('idle');
+                    const detail = data && data.path ? `Path: ${data.path}` : null;
+                    addLog({
+                        message: `❌ Scan error: ${data && data.error ? data.error : 'Unknown error'}`,
+                        detail,
+                        color: 'text-red-400'
+                    });
+                });
+
+                socket.on('analyze_started', (data) => {
+                    setStatus('analyzing');
+                    setAnalyzeProgress({ current: 0, total: data.total || 0, file: '' });
+                });
+
                 socket.on('analyze_progress', (data) => {
-                    setAnalyzeProgress(prev => ({ 
-                        current: data.current, 
-                        total: data.total, 
-                        file: data.file 
+                    setAnalyzeProgress(prev => ({
+                        current: data.current,
+                        total: data.total,
+                        file: data.file
                     }));
                     
                     // Log les décisions en temps réel
@@ -253,7 +281,8 @@
                 // CORRIGÉ: Gestion des résultats d'analyse
                 socket.on('analyze_complete', (data) => {
                     setStatus('complete');
-                    
+                    setAiThinking(null);
+
                     // Organiser les résultats par décision
                     const can_delete = data.results.filter(r => r.decision === 'DELETE');
                     const should_keep = data.results.filter(r => r.decision === 'KEEP');
@@ -267,6 +296,25 @@
                     
                     addLog(`✅ Analyse terminée: ${can_delete.length} à supprimer, ${should_keep.length} à conserver, ${need_review.length} à réviser`);
                 });
+
+                socket.on('analyze_error', (data) => {
+                    setStatus('idle');
+                    setAiThinking(null);
+                    addLog({
+                        message: `❌ Analyse erreur: ${data && data.error ? data.error : 'Unknown error'}`,
+                        color: 'text-red-400'
+                    });
+                });
+
+                socket.on('ai_thinking', (data) => {
+                    if (data && data.file) {
+                        setAiThinking(data);
+                    }
+                });
+
+                socket.on('ai_result', () => {
+                    setAiThinking(null);
+                });
                 
                 socket.on('file_deleted', (data) => {
                     addLog(`🗑️ Supprimé: ${data.path.split('/').pop()}`);
@@ -278,7 +326,7 @@
 
                 // Cleanup à la fermeture de la page
                 const handleUnload = () => {
-                    fetch('http://localhost:5000/api/stop', { method: 'POST' })
+                    apiFetch('/api/stop', { method: 'POST' })
                         .catch(() => {}); // Ignore les erreurs
                 };
                 
@@ -290,8 +338,13 @@
                     socket.off('scan_progress');
                     socket.off('scan_finished');
                     socket.off('scan_cancelled');
+                    socket.off('scan_error');
+                    socket.off('analyze_started');
                     socket.off('analyze_progress');
                     socket.off('analyze_complete');
+                    socket.off('analyze_error');
+                    socket.off('ai_thinking');
+                    socket.off('ai_result');
                     socket.off('file_deleted');
                     socket.off('deletion_complete');
                     window.removeEventListener('beforeunload', handleUnload);
@@ -326,9 +379,14 @@
                 return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'GB';
             };
 
+            const truncate = (value, max = 160) => {
+                if (!value) return '';
+                return value.length > max ? value.slice(0, max) + '…' : value;
+            };
+
             const selectFolder = async (pathOverride = null) => {
                 try {
-                    const response = await fetch('http://localhost:5000/api/select_folder', {
+                    const response = await apiFetch('/api/select_folder', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(pathOverride ? { path: pathOverride } : {})
@@ -375,7 +433,7 @@
                 abortController.current = new AbortController();
 
                 try {
-                    const response = await fetch('http://localhost:5000/api/scan', {
+                    const response = await apiFetch('/api/scan', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -393,13 +451,15 @@
                     if (error.name !== 'AbortError') {
                         addLog('❌ Erreur scan: ' + error.message);
                     }
+                } finally {
+                    abortController.current = null;
                 }
             };
 
             const checkAiStatus = async () => {
                 const modelToCheck = (config.model && config.model.trim()) || 'llama3:8b';
                 try {
-                    const response = await fetch(`http://localhost:5000/api/ai_status?model=${encodeURIComponent(modelToCheck)}`);
+                    const response = await apiFetch(`/api/ai_status?model=${encodeURIComponent(modelToCheck)}`);
                     const data = await response.json();
                     if (data.ok) {
                         addLog(`✅ Ollama prêt (${modelToCheck}) via ${data.ollama_url}`);
@@ -432,47 +492,53 @@
                 addLog(`🧠 Démarrage de l'analyse de ${filesToAnalyze.length} fichiers...`);
 
                 try {
-                    const response = await fetch('http://localhost:5000/api/analyze', {
+                    const response = await apiFetch('/api/analyze', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             paths: filesToAnalyze.map(file => file.file || file.path || file),
-                            model: modelToUse
+                            model: modelToUse,
+                            max_files: config.max_files
                         }),
                         signal: abortController.current.signal
                     });
-                    
+
                     if (!response.ok) {
-                        throw new Error(`Erreur HTTP: ${response.status}`);
+                        throw new Error(`HTTP ${response.status} on ${response.url}`);
                     }
-                    
+
                     const data = await response.json();
 
                     if (data.ok) {
                         const analyzedCount = data.count ?? filesToAnalyze.length;
                         addLog(`✅ Analyse API terminée: ${analyzedCount} fichiers traités`);
                     } else {
-                        addLog('❌ Erreur analyse: ' + data.error);
+                        addLog('❌ Erreur analyse: ' + (data.error || 'Unknown error'));
+                        setStatus('idle');
                     }
                 } catch (error) {
                     if (error.name !== 'AbortError') {
                         addLog('❌ Erreur analyse: ' + error.message);
                         setStatus('idle');
                     }
+                } finally {
+                    abortController.current = null;
                 }
             };
 
             const stopProcess = async () => {
                 if (abortController.current) {
                     abortController.current.abort();
+                    abortController.current = null;
                 }
                 
                 try {
-                    await fetch('http://localhost:5000/api/stop', {
+                    await apiFetch('/api/stop', {
                         method: 'POST'
                     });
                     addLog('⏹️ Processus arrêté');
                     setStatus('idle');
+                    setAiThinking(null);
                 } catch (error) {
                     addLog('❌ Erreur arrêt: ' + error.message);
                 }
@@ -490,6 +556,7 @@
                 setLogs([]);
                 setAiThinking(null);
                 setConfig(getDefaultConfig());
+                setManualPathInput('');
 
                 // Clear localStorage
                 localStorage.clear();
@@ -510,7 +577,7 @@
                 }
                 
                 try {
-                    const response = await fetch('http://localhost:5000/api/delete_by_category', {
+                    const response = await apiFetch('/api/delete_by_category', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ categories: selected })
@@ -544,10 +611,10 @@
                 const paths = results.can_delete.map(r => r.file);
                 
                 try {
-                    const response = await fetch('http://localhost:5000/api/delete', {
+                    const response = await apiFetch('/api/delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
+                        body: JSON.stringify({
                             files: paths,
                             simulate: false
                         })
@@ -736,6 +803,10 @@
                                             <span>Analyser (limite):</span>
                                             <span className="font-bold">{Math.min(candidates.length, config.max_files)}</span>
                                         </div>
+                                        <div className="flex justify-between">
+                                            <span>Protégés détectés:</span>
+                                            <span className="font-bold text-red-300">{protectedFiles.length}</span>
+                                        </div>
                                         {stats.selected_categories && (
                                             <div className="text-xs text-gray-400">
                                                 Filtres: {stats.selected_categories.join(', ')}
@@ -788,9 +859,9 @@
                                 {protectedFiles && protectedFiles.length > 0 ? (
                                     <div>
                                         <p className="text-xs text-gray-400 mb-3">{protectedFiles.length} fichiers contiennent des mots-clés sensibles.</p>
-                                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                                            {protectedFiles.slice(0, 6).map((file, idx) => (
-                                                <div key={`${file.file}-protected-${idx}`} className="p-3 bg-black/30 rounded-lg border border-red-500/30">
+                                        <div className="space-y-2 max-h-72 overflow-y-auto">
+                                            {protectedFiles.map((file, idx) => (
+                                                <div key={`${file.file || file.name}-protected-${idx}`} className="p-3 bg-black/30 rounded-lg border border-red-500/30">
                                                     <div className="flex justify-between text-sm text-red-300">
                                                         <span className="font-semibold truncate pr-3">{file.name}</span>
                                                         <span className="text-xs uppercase">{file.keyword}</span>
@@ -799,11 +870,6 @@
                                                 </div>
                                             ))}
                                         </div>
-                                        {protectedFiles.length > 6 && (
-                                            <p className="text-xs text-gray-400 mt-2 text-center">
-                                                ... et {protectedFiles.length - 6} autres protégés
-                                            </p>
-                                        )}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-gray-400">Aucun document sensible détecté lors du dernier scan.</p>
@@ -891,6 +957,14 @@
                                         <div className="text-xs text-gray-300 truncate">
                                             {analyzeProgress.file}
                                         </div>
+                                        {aiThinking && (
+                                            <div className="text-xs text-purple-200 bg-purple-900/20 p-3 rounded-lg thinking">
+                                                <div className="font-semibold mb-1">Analyzing {aiThinking.file}</div>
+                                                {aiThinking.prompt && (
+                                                    <div className="text-[11px] text-gray-300">Prompt: {truncate(aiThinking.prompt, 200)}</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

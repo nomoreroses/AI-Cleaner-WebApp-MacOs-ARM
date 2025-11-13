@@ -351,7 +351,12 @@ def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str
         print(f"❌ {error_message}")
         return None, error_message
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        error_message = "Réponse Ollama illisible (JSON invalide)"
+        print(f"❌ {error_message}: {exc}")
+        return None, error_message
     text = data.get('response', '')
 
     print(f"\n🔍 DEBUG Ollama response: {text[:200]}")
@@ -370,7 +375,12 @@ def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str
         json_str = text[start:end]
         print(f"🔍 JSON extrait: {json_str}")
 
-        result = json.loads(json_str)
+        try:
+            result = json.loads(json_str)
+        except json.JSONDecodeError as exc:
+            error_message = f"Réponse Ollama JSON invalide: {exc}"
+            print(f"❌ {error_message}")
+            return None, error_message
 
         if 'can_delete' in result and 'reason' in result:
             return result, None
