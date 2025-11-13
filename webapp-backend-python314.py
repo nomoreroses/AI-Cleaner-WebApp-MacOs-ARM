@@ -485,13 +485,11 @@ def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
     normalized_stem = _normalize(Path(name).stem)
 
     if _looks_like_screenshot(name):
-        screenshot_age = 7 if category == 'Images' else 14
-        if age_days >= screenshot_age:
-            return {
-                'importance': 'low',
-                'can_delete': True,
-                'reason': 'Screenshot-style filename matched (safe to delete unless flagged earlier).'
-            }
+        return {
+            'importance': 'low',
+            'can_delete': True,
+            'reason': 'Screenshot-style filename matched (safe to delete unless flagged earlier).'
+        }
 
     if any(_normalize(hint) in normalized_name for hint in TEMPORARY_FILE_HINTS) and age_days >= 30:
         return {

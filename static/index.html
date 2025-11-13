@@ -18,11 +18,6 @@
             to { transform: translateY(0); opacity: 1; }
         }
         .slide-in { animation: slideIn 0.3s ease-out; }
-        
-        /* Empêcher le scroll auto */
-        .no-auto-scroll {
-            overflow-anchor: none;
-        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white">
@@ -96,7 +91,6 @@
             exclude_videos: false,
             delete_empty: true,
             organize_kept_files: true,
-            auto_scroll: true,
             fileTypes: { ...DEFAULT_FILE_TYPES }
         });
 
@@ -134,7 +128,6 @@
             const [logs, setLogs] = useState(loadState('logs', []));
             const [manualPathInput, setManualPathInput] = useState(() => config.path || '');
             
-            const logsEndRef = useRef(null);
             const abortController = useRef(null);
 
             const activeFileTypes = { ...DEFAULT_FILE_TYPES, ...(config.fileTypes || {}) };
@@ -351,11 +344,6 @@
                 };
             }, []);
 
-            useEffect(() => {
-                if (config.auto_scroll && logsEndRef.current) {
-                    logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-                }
-            }, [logs, config.auto_scroll]);
 
             const addLog = (messageOrObj) => {
                 if (typeof messageOrObj === 'string') {
@@ -744,15 +732,6 @@
                                         <p className="text-[11px] text-gray-400 mt-1">Assure-toi que ce modèle est installé via `ollama pull`.</p>
                                     </div>
 
-                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                        <input 
-                                            type="checkbox"
-                                            checked={config.auto_scroll}
-                                            onChange={(e) => setConfig({...config, auto_scroll: e.target.checked})}
-                                            className="w-4 h-4"
-                                        />
-                                        Auto-scroll des logs
-                                    </label>
                                 </div>
 
                                 {/* Actions */}
@@ -1030,7 +1009,7 @@
                         <div className="space-y-6">
                             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
                                 <h2 className="text-xl font-bold mb-4">📜 Logs</h2>
-                                <div className={`bg-black/40 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-xs ${!config.auto_scroll ? 'no-auto-scroll' : ''}`}>
+                                <div className="bg-black/40 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-xs">
                                     {logs.map((log, i) => (
                                         <div key={i} className="mb-2 slide-in">
                                             <div className={log.color || 'text-white'}>
@@ -1043,7 +1022,6 @@
                                             )}
                                         </div>
                                     ))}
-                                    {config.auto_scroll && <div ref={logsEndRef} />}
                                 </div>
                             </div>
                         </div>
