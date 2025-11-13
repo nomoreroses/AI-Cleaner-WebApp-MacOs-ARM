@@ -117,6 +117,60 @@ PROTECTED_KEYWORDS = [
     'important', 'urgent', 'confidentiel'
 ]
 
+CRITICAL_CONTENT_RULES = [
+    {
+        'label': 'invoice_or_receipt',
+        'reason': 'Invoice / receipt wording detected in the document body.',
+        'keywords': [
+            'facture', 'invoice', 'reçu', 'receipt', 'tva', 'taxe', 'montant dû',
+            'amount due', 'total due', 'numéro de facture', 'order reference',
+            'référence commande', 'paiement', 'payment reference'
+        ],
+    },
+    {
+        'label': 'ticket_or_booking',
+        'reason': 'Ticket / reservation details detected (travel or concert proof).',
+        'keywords': [
+            'ticket', 'billet', 'boarding pass', 'qr code', 'reservation',
+            'réservation', 'check-in', 'seat', 'vol', 'flight', 'train', 'concert',
+            'spectacle', 'booking reference', 'passager', 'passenger'
+        ],
+    },
+    {
+        'label': 'bank_or_finance',
+        'reason': 'Bank / payment statement detected (IBAN, RIB, transfer).',
+        'keywords': [
+            'iban', 'bic', 'swift', 'rib', 'relevé de compte', 'bank account',
+            'account number', 'numéro de compte', 'carte bancaire', 'credit card',
+            'debit card', 'virement', 'transfer', 'banque', 'paiement', 'payment'
+        ],
+    },
+    {
+        'label': 'credentials',
+        'reason': 'Credentials or password detected in the text.',
+        'keywords': [
+            'mot de passe', 'password', 'login', 'identifiant', 'username',
+            '2fa', 'otp', 'code de sécurité', 'security code', 'recovery code',
+            'code de récupération', 'facebook', 'gmail', 'outlook', 'compte',
+            'connexion', 'authenticator'
+        ],
+    },
+    {
+        'label': 'administrative',
+        'reason': 'Administrative / legal wording detected (attestation, contract).',
+        'keywords': [
+            'attestation', 'certificat', 'contrat', 'assurance', 'justificatif',
+            'ministere', 'ministère', 'securité sociale', 'sécurité sociale',
+            'urssaf', 'impots', 'impôts', 'fiscal', 'siret', 'sirene'
+        ],
+    },
+]
+
+CRITICAL_CONTENT_REGEX = [
+    (re.compile(r'\b[A-Z]{2}\d{2}[A-Z0-9]{10,}\b'), 'IBAN-like sequence detected.'),
+    (re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'), 'Credit card style number detected.'),
+]
+
 SHORT_KEYWORD_MAX_LEN = 3
 
 CATEGORIES = {
@@ -169,6 +223,27 @@ def is_protected(filename):
                 return True, keyword
 
     return False, None
+
+
+def detect_critical_content(preview: Optional[str]) -> Optional[str]:
+    """Détecte des contenus critiques dans l'aperçu texte."""
+
+    if not preview:
+        return None
+
+    normalized_preview = _normalize(preview)
+
+    for rule in CRITICAL_CONTENT_RULES:
+        for keyword in rule['keywords']:
+            normalized_keyword = _normalize(keyword)
+            if normalized_keyword in normalized_preview:
+                return f"{rule['reason']} (keyword '{keyword}')"
+
+    for pattern, reason in CRITICAL_CONTENT_REGEX:
+        if pattern.search(preview):
+            return reason
+
+    return None
 
 
 def _clean_preview_text(text: str, max_chars: int = 600) -> Optional[str]:
@@ -520,6 +595,15 @@ def analyze_file(file_info, model="llama3:8b"):
         }
 
     preview = extract_text_preview(file_info)
+    critical_reason = detect_critical_content(preview)
+
+    if critical_reason:
+        return {
+            'importance': 'high',
+            'can_delete': False,
+            'reason': f'🔒 {critical_reason}'
+        }
+
     if preview:
         preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
     else:
@@ -527,30 +611,32 @@ def analyze_file(file_info, model="llama3:8b"):
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
-File name: {file_info['name']}
-Extension: {file_info['ext']}
-Size: {human_size(file_info['size'])}
-Age: {file_info['age']} days
+INPUT METADATA (only use when preview lacks context):
+- File name: {file_info['name']}
+- Extension: {file_info['ext']}
+- Size: {human_size(file_info['size'])}
+- Age: {file_info['age']} days
 
+TEXT PREVIEW (this has top priority over all metadata and filenames):
 {preview_section}
 
-ALWAYS KEEP:
-- Any medical / health / prescription / lab result document.
-- Invoices, receipts, tickets, travel confirmations.
-- CVs, cover letters, signed contracts, attestations, certificates.
-- Anything marked important/urgent/confidential or newer than 60 days.
+STRICT NON-NEGOTIABLE RULES (content wins over filename):
+1. If the text preview or metadata suggests invoices, receipts, proofs of purchase, bills, URSSAF/administrative documents, banking statements, IBAN/RIB numbers, or payment references -> importance="high", can_delete=false, explain the triggered rule.
+2. If you detect tickets, boarding passes, travel reservations, QR codes, or booking references -> importance="high", can_delete=false.
+3. If the text mentions passwords, logins, credentials, recovery codes, OTP/2FA, or account access for services (Facebook, Gmail, etc.) -> importance="high", can_delete=false.
+4. CVs, cover letters, signed contracts, attestations, certificates, identity documents, prescriptions, and medical records are always importance="high", can_delete=false.
+5. When unsure or when the preview is missing/ambiguous -> importance="unknown", can_delete=false, reason="Not enough context".
+6. Never rely solely on the filename. Content > metadata > filename in that order.
 
-DELETE ONLY WHEN:
-- The filename clearly shows screenshot/capture/temp/backup content.
-- It is a throwaway temporary/cache/log file.
-- It is older than 365 days and obviously irrelevant.
+DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
+- Content explicitly looks like temporary/cache/log/screenshot/test data.
+- There is zero indication of administrative, financial, personal, or security relevance.
+- The file is clearly safe to discard (e.g., duplicate screenshots, obvious cache output).
 
-If unsure, keep the file.
-
-Respond in valid JSON using exactly one of these shapes:
-{{"importance":"high","can_delete":false,"reason":"short human reason"}}
-or
-{{"importance":"low","can_delete":true,"reason":"short human reason"}}
+Respond in valid JSON (no prose) using one of these forms:
+{{"importance":"high","can_delete":false,"reason":"why it must be kept"}}
+{{"importance":"unknown","can_delete":false,"reason":"why you are unsure"}}
+{{"importance":"low","can_delete":true,"reason":"why deletion is safe"}}
 """
     
     socketio.emit('ai_thinking', {
