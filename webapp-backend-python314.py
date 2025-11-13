@@ -126,6 +126,14 @@ ALWAYS_KEEP_KEYWORDS = [
     'irm', 'scanner', 'radio', 'radiographie', 'biologie', 'bilan biologique',
     'sérologie', 'ald', 'affection longue durée', 'certificat médical',
     'arrêt de travail', 'medical', 'médical', 'santé', 'dossier medical',
+    'traitement', 'traitements', 'médicament', 'médicaments', 'medicament',
+    'medications', 'posologie', 'psy', 'psycho', 'psychiatrie', 'psychiatre',
+    'psychologue', 'psychologie', 'psychologique', 'psychothérapeute',
+    'psychothérapie', 'thérapie', 'therapie', 'bilan psy', 'bilan psychologique',
+    'bilan psychiatrique', 'bilan neuropsychologique', 'suivi psy',
+    'suivi psychologique', 'suivi psychiatrique', 'consultation psy',
+    'consultation médicale', 'consultation psychologique',
+    'compte rendu psychiatrique', 'compte rendu psychologique',
     # Administratif / juridique
     'attestation', 'certificat', 'justificatif', 'contrat', 'avenant',
     'conditions générales', 'cgv', 'cgu', 'règlement', 'règlement intérieur',
@@ -179,7 +187,16 @@ CRITICAL_CONTENT_RULES = [
             'ordonnance', 'certificat médical', 'analyse', 'résultat d\'analyse',
             'compte-rendu', 'irm', 'scanner', 'radio', 'radiographie',
             'biologie', 'bilan biologique', 'sérologie', 'ald',
-            'affection longue durée', 'arrêt de travail', 'dossier medical'
+            'affection longue durée', 'arrêt de travail', 'dossier medical',
+            'traitement', 'traitements', 'médicament', 'médicaments',
+            'medicament', 'medications', 'posologie', 'psy', 'psychiatrie',
+            'psychiatre', 'psychologue', 'psychologie', 'psychologique',
+            'psychothérapeute', 'psychothérapie', 'thérapie', 'therapie',
+            'bilan psy', 'bilan psychologique', 'bilan psychiatrique',
+            'bilan neuropsychologique', 'suivi psy', 'suivi psychologique',
+            'suivi psychiatrique', 'consultation psy', 'consultation médicale',
+            'consultation psychologique', 'compte rendu psychiatrique',
+            'compte rendu psychologique'
         ],
     },
     {
@@ -971,10 +988,12 @@ STRICT NON-NEGOTIABLE RULES (content outranks filenames):
 1. If the preview or metadata indicates invoices, receipts, proofs of purchase, URSSAF/administrative docs, banking statements, IBAN/RIB, or payment references -> importance="high", can_delete=false. Explain which trigger fired.
 2. Tickets, boarding passes, travel reservations, QR codes, concert bookings -> importance="high", can_delete=false.
 3. Passwords, logins, credentials, recovery codes, OTP/2FA, or account access details -> importance="high", can_delete=false.
-4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, and medical records -> importance="high", can_delete=false.
-5. Only answer "importance":"unknown" when BOTH preview and metadata fail to indicate whether the file is safe or critical. Lack of preview alone is not enough if the filename/metadata are descriptive.
-6. Content > metadata > filename. Still, when the preview is absent you must reason from metadata/filename/folder neighbors instead of defaulting to unknown.
-7. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
+4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, medical or psychological records, treatments, medications, therapy notes, or diagnostics -> importance="high", can_delete=false.
+5. If the preview contains any of the above protected keywords you MUST emit importance="high" (never "unknown").
+6. Only answer "importance":"unknown" when preview, metadata, folder context, AND filename all fail to provide direction. Lack of preview alone is not enough if metadata or naming already describes the purpose (e.g., screenshot, temp, invoice, booking, contract).
+7. Content > metadata > filename. When the preview is absent you still reason from metadata/folder neighbors instead of defaulting to unknown.
+8. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
+
 
 DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
 - Content or metadata clearly points to temporary/cache/log/screenshot/test/duplicate material.
