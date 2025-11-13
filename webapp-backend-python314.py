@@ -4,32 +4,46 @@ Flask Backend pour AI Cleaner WebApp - Compatible Python 3.14
 API + WebSocket pour updates temps réel
 """
 
+from __future__ import annotations
+
 # PATCH pour Python 3.14 : Restaurer pkgutil.get_loader
+import importlib
+import importlib.util
+import os
 import pkgutil
 import sys
+from typing import Optional
 
-if not hasattr(pkgutil, 'get_loader'):
-    import importlib.util
+FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
+NEEDS_PKGUTIL_SHIM = FORCE_PKGUTIL_SHIM or not hasattr(pkgutil, 'get_loader') or sys.version_info >= (3, 14)
 
-    def _get_loader(name):
-        """Compatibilité Python 3.14 pour pkgutil.get_loader."""
 
-        try:
-            spec = importlib.util.find_spec(name)
-        except (ValueError, ImportError):
-            # Python 3.14 peut lever ValueError si __spec__ est None (ex: __main__)
-            # ou ImportError si le module n'existe pas. Dans ces cas, on renvoie None
-            # pour imiter l'ancien comportement de pkgutil.get_loader.
-            return None
+def _safe_pkgutil_get_loader(name: str) -> Optional[importlib.abc.Loader]:  # type: ignore[attr-defined]
+    """Compatibilité Python 3.14 pour pkgutil.get_loader.
 
-        return spec.loader if spec else None
+    Python 3.14 supprime pkgutil.get_loader (voir notes de version CPython 3.14),
+    ce shim restaure l'ancien comportement en renvoyant None au lieu de lever
+    ValueError lorsque __main__.__spec__ est absent. Ref: docs Python 3.14 -
+    https://docs.python.org/3.14/whatsnew/3.14.html#removed
+    """
 
-    pkgutil.get_loader = _get_loader
+    try:
+        spec = importlib.util.find_spec(name)
+    except (ValueError, ImportError):
+        # Python 3.14 peut lever ValueError si __spec__ est None (ex: __main__)
+        # ou ImportError si le module n'existe pas. Dans ces cas, on renvoie None
+        # pour imiter l'ancien comportement de pkgutil.get_loader.
+        return None
+
+    return spec.loader if spec else None
+
+
+if NEEDS_PKGUTIL_SHIM:
+    pkgutil.get_loader = _safe_pkgutil_get_loader
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
-import os
 import json
 from pathlib import Path
 from datetime import datetime
@@ -64,8 +78,13 @@ state = {
     'analyzed_files': 0,
     'candidates': [],
     'results': [],
-    'stats': {}
+    'stats': {},
+    'files': [],
+    'last_scan_path': None
 }
+
+scan_cancel_event = threading.Event()
+analyze_cancel_event = threading.Event()
 
 IGNORED_DIRS = {
     'node_modules', '.git', '.venv', 'venv', '__pycache__',
@@ -117,26 +136,35 @@ def is_protected(filename):
             return True, keyword
     return False, None
 
-def scan_directory(path, min_age_days=30, min_size_mb=20):
+def scan_directory(path, min_age_days=30, min_size_mb=20, cancel_event=None):
     """Scan rapide avec os.scandir"""
     stats = defaultdict(lambda: {'count': 0, 'size': 0})
     candidates = []
     total = 0
     
     def scan_recursive(dir_path):
+        if cancel_event and cancel_event.is_set():
+            return
+
         nonlocal total
         try:
             with os.scandir(dir_path) as entries:
                 for entry in entries:
+                    if cancel_event and cancel_event.is_set():
+                        return
+
                     if entry.name.startswith('.'):
                         continue
-                    
+
                     if entry.is_dir(follow_symlinks=False):
                         if entry.name in IGNORED_DIRS:
                             continue
                         scan_recursive(entry.path)
-                    
+
                     elif entry.is_file(follow_symlinks=False):
+                        if cancel_event and cancel_event.is_set():
+                            return
+
                         ext = os.path.splitext(entry.name)[1]
                         if ext in SKIP_EXTS:
                             continue
@@ -315,22 +343,39 @@ ou
 def analyze_batch(candidates, model="llama3:8b", batch_size=10):
     """Analyse par batch avec updates temps réel"""
     results = []
-    
+
     for i, candidate in enumerate(candidates):
-        socketio.emit('analyze_progress', {
-            'current': i + 1,
-            'total': len(candidates),
-            'file': candidate['name']
-        })
-        
+        if analyze_cancel_event.is_set():
+            break
+
         analysis = analyze_file(candidate, model)
-        
+
         if analysis:
-            results.append({
-                'file': candidate,
-                'analysis': analysis
+            decision = 'DELETE' if analysis.get('can_delete') else 'KEEP'
+            if analysis.get('importance') == 'unknown':
+                decision = 'REVIEW'
+
+            record = {
+                'file': candidate['path'],
+                'name': candidate['name'],
+                'size': candidate['size'],
+                'size_h': human_size(candidate['size']),
+                'age_days': candidate['age'],
+                'category': candidate['category'],
+                'decision': decision,
+                'reason': analysis.get('reason', 'Décision indisponible'),
+                'can_delete': analysis.get('can_delete', False)
+            }
+            results.append(record)
+
+            socketio.emit('analyze_progress', {
+                'current': i + 1,
+                'total': len(candidates),
+                'file': candidate['name'],
+                'decision': decision,
+                'reason': record['reason']
             })
-    
+
     return results
 
 # ═══════════════════════════════════════════════════════════
@@ -349,88 +394,207 @@ def index():
             'path': str(index_path)
         }), 404
 
+
+@app.route('/favicon.ico')
+def favicon():
+    icon_path = STATIC_DIR / 'favicon.ico'
+    if icon_path.exists():
+        return send_from_directory(str(STATIC_DIR), 'favicon.ico')
+    return '', 204
+
+@app.route('/api/select_folder', methods=['POST'])
+def api_select_folder():
+    """Sélectionner un dossier côté backend (fallback Downloads)."""
+    data = request.get_json(silent=True) or {}
+    requested = data.get('path')
+
+    if requested:
+        target = Path(requested).expanduser()
+    elif state['last_scan_path']:
+        target = Path(state['last_scan_path'])
+    else:
+        downloads = Path.home() / 'Downloads'
+        target = downloads if downloads.exists() else Path.home()
+
+    if not target.exists() or not target.is_dir():
+        return jsonify({'ok': False, 'error': f'Dossier introuvable: {target}'}), 400
+
+    state['last_scan_path'] = str(target)
+    return jsonify({'ok': True, 'path': str(target)})
+
+
 @app.route('/api/scan', methods=['POST'])
 def api_scan():
     """Lancer un scan"""
-    data = request.json
-    path = data.get('path', str(Path.home() / "Downloads"))
+    if state['scanning']:
+        return jsonify({'ok': False, 'error': 'Scan déjà en cours'}), 409
+
+    data = request.get_json(silent=True) or {}
+    path = data.get('path') or state['last_scan_path'] or str(Path.home() / "Downloads")
+    scan_path = Path(path).expanduser()
+
+    if not scan_path.exists() or not scan_path.is_dir():
+        return jsonify({'ok': False, 'error': f'Dossier introuvable: {scan_path}'}), 400
+
     min_age = data.get('min_age_days', 30)
     min_size = data.get('min_size_mb', 20)
-    
+
+    state['last_scan_path'] = str(scan_path)
+
     def scan_task():
+        scan_cancel_event.clear()
         state['scanning'] = True
-        socketio.emit('scan_started', {'path': path})
-        
-        result = scan_directory(path, min_age, min_size)
-        
+        socketio.emit('scan_started', {'path': str(scan_path)})
+
+        try:
+            result = scan_directory(str(scan_path), min_age, min_size, cancel_event=scan_cancel_event)
+        except Exception as exc:  # pragma: no cover - log unexpected errors
+            state['scanning'] = False
+            socketio.emit('scan_error', {
+                'error': str(exc),
+                'path': str(scan_path)
+            })
+            scan_cancel_event.clear()
+            return
+
+        files_payload = [
+            {
+                'file': candidate['path'],
+                'name': candidate['name'],
+                'size': candidate['size'],
+                'size_h': human_size(candidate['size']),
+                'age_days': candidate['age'],
+                'category': candidate['category']
+            }
+            for candidate in result['candidates']
+        ]
+
+        stats_payload = {
+            k: {
+                'count': v['count'],
+                'size': human_size(v['size'])
+            }
+            for k, v in result['stats'].items()
+        }
+
         state['total_files'] = result['total_files']
-        state['stats'] = result['stats']
+        state['stats'] = stats_payload
         state['candidates'] = result['candidates']
+        state['files'] = files_payload
         state['scanning'] = False
-        
-        socketio.emit('scan_complete', {
-            'total_files': result['total_files'],
-            'candidates': len(result['candidates']),
-            'stats': {k: {'count': v['count'], 'size': human_size(v['size'])} 
-                     for k, v in result['stats'].items()}
-        })
-    
+
+        event_name = 'scan_cancelled' if scan_cancel_event.is_set() else 'scan_finished'
+        payload = {
+            'count': len(files_payload),
+            'files': files_payload,
+            'stats': stats_payload,
+            'path': str(scan_path),
+            'cancelled': event_name == 'scan_cancelled'
+        }
+        socketio.emit(event_name, payload)
+        socketio.emit('scan_complete', payload)  # compat frontend legacy
+        scan_cancel_event.clear()
+
     thread = threading.Thread(target=scan_task)
     thread.start()
-    
-    return jsonify({'status': 'started'})
+
+    return jsonify({'ok': True, 'status': 'started'})
 
 @app.route('/api/analyze', methods=['POST'])
 def api_analyze():
     """Lancer l'analyse IA"""
-    data = request.json
+    if state['analyzing']:
+        return jsonify({'ok': False, 'error': 'Analyse déjà en cours'}), 409
+
+    data = request.get_json(silent=True) or {}
     model = data.get('model', 'llama3:8b')
-    max_files = data.get('max_files', len(state['candidates']))
-    
-    candidates = state['candidates'][:max_files]
-    
+    max_files = data.get('max_files')
+
+    requested_files = data.get('paths') or []
+    candidate_map = {c['path']: c for c in state['candidates']}
+    selected = []
+
+    if requested_files:
+        for entry in requested_files:
+            if isinstance(entry, str):
+                path = entry
+            elif isinstance(entry, dict):
+                path = entry.get('file') or entry.get('path')
+            else:
+                continue
+
+            candidate = candidate_map.get(path)
+            if candidate:
+                selected.append(candidate)
+
+    if not selected:
+        limit = len(state['candidates'])
+        if max_files is not None:
+            limit = min(limit, int(max_files))
+        selected = state['candidates'][:limit]
+
+    if not selected:
+        return jsonify({'ok': False, 'error': 'Aucun fichier à analyser'}), 400
+
     def analyze_task():
+        analyze_cancel_event.clear()
         state['analyzing'] = True
-        socketio.emit('analyze_started', {'total': len(candidates)})
-        
-        results = analyze_batch(candidates, model)
-        
+        socketio.emit('analyze_started', {'total': len(selected)})
+
+        try:
+            results = analyze_batch(selected, model)
+        except Exception as exc:  # pragma: no cover - log unexpected errors
+            state['analyzing'] = False
+            socketio.emit('analyze_error', {'error': str(exc)})
+            analyze_cancel_event.clear()
+            return
+
         state['results'] = results
         state['analyzing'] = False
-        
-        can_delete = [r for r in results if r['analysis'].get('can_delete')]
-        should_keep = [r for r in results if not r['analysis'].get('can_delete')]
-        
-        total_deletable = sum(r['file']['size'] for r in can_delete)
-        
-        socketio.emit('analyze_complete', {
-            'total_analyzed': len(results),
-            'can_delete': len(can_delete),
-            'should_keep': len(should_keep),
-            'space_recoverable': human_size(total_deletable)
-        })
-    
+
+        decisions = {'DELETE': 0, 'KEEP': 0, 'REVIEW': 0}
+        total_deletable = 0
+
+        for result in results:
+            decision = result.get('decision', 'REVIEW')
+            decisions[decision] = decisions.get(decision, 0) + 1
+            if decision == 'DELETE':
+                total_deletable += result.get('size', 0)
+
+        payload = {
+            'results': results,
+            'total': len(results),
+            'counts': decisions,
+            'space_recoverable': human_size(total_deletable),
+            'cancelled': analyze_cancel_event.is_set()
+        }
+
+        socketio.emit('analyze_complete', payload)
+        analyze_cancel_event.clear()
+
     thread = threading.Thread(target=analyze_task)
     thread.start()
-    
-    return jsonify({'status': 'started'})
+
+    return jsonify({'ok': True, 'status': 'started', 'total': len(selected)})
 
 @app.route('/api/results', methods=['GET'])
 def api_results():
     """Obtenir les résultats"""
     return jsonify({
+        'ok': True,
         'results': state['results'],
-        'stats': state['stats']
+        'stats': state['stats'],
+        'files': state['files']
     })
 
 @app.route('/api/delete_by_category', methods=['POST'])
 def api_delete_by_category():
     """Supprimer tous les fichiers des catégories sélectionnées"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     categories = data.get('categories', [])
-    
+
     if not categories:
-        return jsonify({'error': 'Aucune catégorie sélectionnée'}), 400
+        return jsonify({'ok': False, 'error': 'Aucune catégorie sélectionnée'}), 400
     
     deleted = []
     errors = []
@@ -457,19 +621,22 @@ def api_delete_by_category():
     return jsonify({
         'deleted': len(deleted),
         'errors': len(errors),
-        'size_freed': human_size(total_size),
-        'details': {'deleted': deleted, 'errors': errors}
+        'size_freed': total_size,
+        'size_freed_h': human_size(total_size),
+        'details': {'deleted': deleted, 'errors': errors},
+        'ok': True
     })
 
 @app.route('/api/delete', methods=['POST'])
 def api_delete():
     """Supprimer les fichiers sélectionnés"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     file_paths = data.get('files', [])
-    
+
     deleted = []
     errors = []
-    
+    total_size = 0
+
     for path in file_paths:
         try:
             filename = os.path.basename(path)
@@ -483,30 +650,50 @@ def api_delete():
                 print(f"🛡️ SUPPRESSION REFUSÉE: {filename} (protégé: {keyword})")
                 continue
             
+            try:
+                file_size = os.path.getsize(path)
+            except OSError:
+                file_size = 0
+
             os.unlink(path)
             deleted.append(path)
+            total_size += file_size
             socketio.emit('file_deleted', {'path': path})
             print(f"✅ Supprimé: {filename}")
         except Exception as e:
             errors.append({'path': path, 'error': str(e)})
             socketio.emit('file_delete_error', {'path': path, 'error': str(e)})
-    
+
     return jsonify({
         'deleted': len(deleted),
         'errors': len(errors),
-        'details': {'deleted': deleted, 'errors': errors}
+        'size_freed': total_size,
+        'size_freed_h': human_size(total_size),
+        'details': {'deleted': deleted, 'errors': errors},
+        'ok': True
     })
 
 @app.route('/api/status', methods=['GET'])
 def api_status():
     """État actuel"""
     return jsonify({
+        'ok': True,
         'scanning': state['scanning'],
         'analyzing': state['analyzing'],
         'total_files': state['total_files'],
         'candidates': len(state['candidates']),
         'results': len(state['results'])
     })
+
+
+@app.route('/api/stop', methods=['POST'])
+def api_stop():
+    """Arrêter scan/analyse en cours"""
+    scan_cancel_event.set()
+    analyze_cancel_event.set()
+    state['scanning'] = False
+    state['analyzing'] = False
+    return jsonify({'ok': True, 'message': 'Arrêt demandé'})
 
 # ═══════════════════════════════════════════════════════════
 # WEBSOCKET EVENTS
