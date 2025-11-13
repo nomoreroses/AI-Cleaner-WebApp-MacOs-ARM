@@ -607,31 +607,37 @@ def analyze_file(file_info, model="llama3:8b"):
     if preview:
         preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
     else:
-        preview_section = "File preview unavailable (binary or unreadable).\n"
+        preview_section = (
+            "No textual preview is available (likely image/audio/archive)."
+            " Use metadata hints (filename patterns, extension, age, size,"
+            " category) to decide. If metadata clearly shows temporary/log/"
+            "screenshot/test content you may delete; otherwise stay cautious.\n"
+        )
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
-INPUT METADATA (only use when preview lacks context):
+INPUT METADATA (use this when the preview gives little signal):
 - File name: {file_info['name']}
 - Extension: {file_info['ext']}
 - Size: {human_size(file_info['size'])}
 - Age: {file_info['age']} days
+- Category: {file_info['category']}
 
-TEXT PREVIEW (this has top priority over all metadata and filenames):
+TEXT PREVIEW (top priority):
 {preview_section}
 
-STRICT NON-NEGOTIABLE RULES (content wins over filename):
-1. If the text preview or metadata suggests invoices, receipts, proofs of purchase, bills, URSSAF/administrative documents, banking statements, IBAN/RIB numbers, or payment references -> importance="high", can_delete=false, explain the triggered rule.
-2. If you detect tickets, boarding passes, travel reservations, QR codes, or booking references -> importance="high", can_delete=false.
-3. If the text mentions passwords, logins, credentials, recovery codes, OTP/2FA, or account access for services (Facebook, Gmail, etc.) -> importance="high", can_delete=false.
-4. CVs, cover letters, signed contracts, attestations, certificates, identity documents, prescriptions, and medical records are always importance="high", can_delete=false.
-5. When unsure or when the preview is missing/ambiguous -> importance="unknown", can_delete=false, reason="Not enough context".
-6. Never rely solely on the filename. Content > metadata > filename in that order.
+STRICT NON-NEGOTIABLE RULES (content outranks filenames):
+1. If the preview or metadata indicates invoices, receipts, proofs of purchase, URSSAF/administrative docs, banking statements, IBAN/RIB, or payment references -> importance="high", can_delete=false. Explain which trigger fired.
+2. Tickets, boarding passes, travel reservations, QR codes, concert bookings -> importance="high", can_delete=false.
+3. Passwords, logins, credentials, recovery codes, OTP/2FA, or account access details -> importance="high", can_delete=false.
+4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, and medical records -> importance="high", can_delete=false.
+5. Only answer "importance":"unknown" when BOTH preview and metadata fail to indicate whether the file is safe or critical. Lack of preview alone is not enough if the filename/metadata are descriptive.
+6. Content > metadata > filename. Still, when the preview is absent you must reason from metadata/filename instead of defaulting to unknown.
 
 DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
-- Content explicitly looks like temporary/cache/log/screenshot/test data.
-- There is zero indication of administrative, financial, personal, or security relevance.
-- The file is clearly safe to discard (e.g., duplicate screenshots, obvious cache output).
+- Content or metadata clearly points to temporary/cache/log/screenshot/test/duplicate material.
+- No hints of administrative, financial, personal, or security relevance.
+- You can articulate why deletion is safe.
 
 Respond in valid JSON (no prose) using one of these forms:
 {{"importance":"high","can_delete":false,"reason":"why it must be kept"}}
