@@ -14,6 +14,7 @@ import pkgutil
 import re
 import sys
 import unicodedata
+import zipfile
 from typing import Optional, Set, Tuple
 
 FORCE_PKGUTIL_SHIM = os.getenv("FORCE_PKGUTIL_SHIM") == "1"
@@ -128,6 +129,11 @@ CATEGORIES = {
     'Installers': {'.pkg', '.dmg', '.app', '.exe'},
 }
 
+SIMPLE_TEXT_EXTS = {
+    '.txt', '.md', '.markdown', '.csv', '.json', '.log', '.ini', '.cfg', '.conf', '.html',
+    '.htm', '.xml', '.yaml', '.yml', '.tex', '.rtf'
+}
+
 def human_size(size):
     for unit in ['B', 'KB', 'MB', 'GB']:
         if size < 1024.0:
@@ -163,6 +169,96 @@ def is_protected(filename):
                 return True, keyword
 
     return False, None
+
+
+def _clean_preview_text(text: str, max_chars: int = 600) -> Optional[str]:
+    if not text:
+        return None
+
+    condensed = re.sub(r'\s+', ' ', text)
+    condensed = condensed.replace('```', '` ` `').strip()
+
+    if not condensed:
+        return None
+
+    return condensed[:max_chars]
+
+
+def _extract_plain_text_preview(path: str, max_chars: int = 600) -> Optional[str]:
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as handle:
+            snippet = handle.read(max_chars * 4)
+    except OSError:
+        return None
+
+    return _clean_preview_text(snippet, max_chars)
+
+
+def _extract_rtf_preview(path: str, max_chars: int = 600) -> Optional[str]:
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as handle:
+            snippet = handle.read(max_chars * 6)
+    except OSError:
+        return None
+
+    snippet = re.sub(r'{\\.*?}', ' ', snippet)
+    snippet = re.sub(r'\\[a-zA-Z]+-?\d* ?', ' ', snippet)
+    return _clean_preview_text(snippet, max_chars)
+
+
+def _extract_docx_preview(path: str, max_chars: int = 600) -> Optional[str]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            with archive.open('word/document.xml') as doc_xml:
+                raw = doc_xml.read().decode('utf-8', errors='ignore')
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return None
+
+    text = re.sub(r'<[^>]+>', ' ', raw)
+    return _clean_preview_text(text, max_chars)
+
+
+def _extract_pdf_preview(path: str, max_chars: int = 600) -> Optional[str]:
+    try:
+        with open(path, 'rb') as handle:
+            data = handle.read(131072)
+    except OSError:
+        return None
+
+    chunks = re.findall(rb'\(([^)]+)\)', data)
+    if not chunks:
+        return None
+
+    decoded = ' '.join(part.decode('latin-1', errors='ignore') for part in chunks)
+    return _clean_preview_text(decoded, max_chars)
+
+
+def extract_text_preview(file_info, max_chars: int = 600) -> Optional[str]:
+    path = file_info.get('path')
+    ext = file_info.get('ext', '').lower()
+
+    if not path or not ext:
+        return None
+
+    if ext in {'.docx'}:
+        return _extract_docx_preview(path, max_chars)
+
+    if ext == '.pdf':
+        return _extract_pdf_preview(path, max_chars)
+
+    if ext == '.rtf':
+        return _extract_rtf_preview(path, max_chars)
+
+    if ext in SIMPLE_TEXT_EXTS:
+        return _extract_plain_text_preview(path, max_chars)
+
+    if ext in {'.doc'}:
+        # Les fichiers .doc binaires ne sont pas triviaux à lire sans dépendances
+        # externes. On tente une lecture texte simple au cas où il s'agit d'un
+        # document enregistré en mode texte.
+        return _extract_plain_text_preview(path, max_chars)
+
+    return None
 
 
 def ensure_ollama_ready(model: str) -> None:
@@ -414,7 +510,7 @@ def call_ollama(prompt, model="llama3:8b") -> Tuple[Optional[dict], Optional[str
 
 def analyze_file(file_info, model="llama3:8b"):
     """Analyse un fichier"""
-    
+
     protected, keyword = is_protected(file_info['name'])
     if protected:
         return {
@@ -422,13 +518,21 @@ def analyze_file(file_info, model="llama3:8b"):
             'can_delete': False,
             'reason': f'🛡️ Document protégé ({keyword})'
         }
-    
+
+    preview = extract_text_preview(file_info)
+    if preview:
+        preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
+    else:
+        preview_section = "File preview unavailable (binary or unreadable).\n"
+
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
 File name: {file_info['name']}
 Extension: {file_info['ext']}
 Size: {human_size(file_info['size'])}
 Age: {file_info['age']} days
+
+{preview_section}
 
 ALWAYS KEEP:
 - Any medical / health / prescription / lab result document.
