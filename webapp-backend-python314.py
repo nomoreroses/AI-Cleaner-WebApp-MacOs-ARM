@@ -18,6 +18,24 @@ import zipfile
 from typing import Dict, List, Optional, Set, Tuple
 import subprocess
 
+# SocketIO a besoin d'un serveur async compatible (eventlet, gevent...).
+# On tente d'activer eventlet dès le démarrage pour éviter que Werkzeug ne
+# prenne la main et provoque l'erreur « write() before start_response ».
+ASYNC_MODE = os.getenv('SOCKETIO_ASYNC_MODE', 'eventlet')
+_eventlet_active = False
+
+if ASYNC_MODE == 'eventlet':
+    try:  # pragma: no cover - dépend de l'environnement d'exécution
+        import eventlet
+
+        eventlet.monkey_patch()
+        _eventlet_active = True
+    except Exception as exc:  # pragma: no cover - simple fallback
+        print(
+            f"⚠️  Eventlet indisponible ({exc}); « threading » sera utilisé pour Socket.IO."
+        )
+        ASYNC_MODE = 'threading'
+
 try:
     from PyPDF2 import PdfReader
 except Exception:  # pragma: no cover - PyPDF2 optional fallback
@@ -78,7 +96,7 @@ if not INDEX_HTML.exists():
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path='/static')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE)
 
 # Session HTTP réutilisable
 session = requests.Session()
@@ -1598,4 +1616,17 @@ if __name__ == '__main__':
 📡 WebSocket activé pour updates temps réel
     """)
     
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    run_kwargs = {
+        'host': '0.0.0.0',
+        'port': 5000,
+        'debug': False,
+        'use_reloader': False,
+    }
+
+    if not _eventlet_active and ASYNC_MODE != 'eventlet':
+        print(
+            "⚠️  WebSocket tourne en mode threading. Installe eventlet/gevent pour un support complet."
+        )
+        run_kwargs['allow_unsafe_werkzeug'] = True
+
+    socketio.run(app, **run_kwargs)
