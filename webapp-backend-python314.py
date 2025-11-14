@@ -438,7 +438,12 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 def _looks_like_screenshot(name: str) -> bool:
     normalized = _normalize_words(name)
-    return any(_normalize_words(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
+    for keyword in SCREENSHOT_PATTERNS:
+        normalized_keyword = _normalize_words(keyword)
+        # Skip empty normalized keywords (e.g., non-Latin characters that get stripped)
+        if normalized_keyword and normalized_keyword in normalized:
+            return True
+    return False
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
