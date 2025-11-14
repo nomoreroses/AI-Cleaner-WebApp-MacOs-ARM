@@ -101,6 +101,7 @@ const { useState, useEffect, useRef } = React;
             const abortController = useRef(null);
 
             const activeFileTypes = { ...DEFAULT_FILE_TYPES, ...(config.fileTypes || {}) };
+            const activeFileTypeCount = Object.values(activeFileTypes).filter(Boolean).length;
 
             const toggleFileType = (key) => {
                 setConfig(prev => {
@@ -620,33 +621,30 @@ const { useState, useEffect, useRef } = React;
             };
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-[#040818] via-[#111d33] to-[#1d1f4a] text-white">
-                    <div className="max-w-7xl mx-auto px-4 py-10 space-y-8">
+                <div className="min-h-screen text-white" style={{ background: 'radial-gradient(circle at 0% 0%, rgba(57,84,222,0.3), transparent 60%), #050a19' }}>
+                    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
                         <header className="space-y-2">
-                            <p className="text-xs uppercase tracking-[0.3em] text-white/40">AI Cleaner</p>
-                            <div>
-                                <h1 className="text-4xl font-semibold tracking-tight">AI Cleaner v3.0</h1>
-                                <p className="text-sm text-white/70">Interface inspirée de MacCleaner pour orchestrer tes scans et l'IA.</p>
+                            <p className="text-xs uppercase tracking-[0.3em] text-white/50">AI Cleaner</p>
+                            <div className="flex flex-wrap items-end justify-between gap-4">
+                                <div>
+                                    <h1 className="text-4xl font-semibold tracking-tight">AI Cleaner v3.0</h1>
+                                    <p className="text-sm text-white/70">Nettoyage assisté par IA dans une seule vue lisible.</p>
+                                </div>
+                                <div style={{ textAlign: 'right' }} className="text-xs text-white/60 space-y-1">
+                                    <p>{candidates.length} fichiers candidats</p>
+                                    <p>{selectedDeleteCount} prêts à supprimer</p>
+                                </div>
                             </div>
                         </header>
 
                         <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)360px]">
-                            {/* Sidebar */}
-                            <aside className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6 backdrop-blur">
-                                <div className="space-y-3">
-                                    {[{
-                                        label: 'Overview',
-                                        icon: '📊',
-                                        value: overviewSizeLabel
-                                    }, {
-                                        label: 'Scan Folder',
-                                        icon: '🗂️',
-                                        value: scanStatusLabel
-                                    }, {
-                                        label: 'AI Analysis',
-                                        icon: '🧠',
-                                        value: aiStatusLabel
-                                    }].map(item => (
+                            <aside className="space-y-5">
+                                <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur">
+                                    {[
+                                        { label: 'Overview', icon: '📦', value: overviewSizeLabel },
+                                        { label: 'Scan Folder', icon: '🗂️', value: scanStatusLabel },
+                                        { label: 'AI Analysis', icon: '🧠', value: aiStatusLabel }
+                                    ].map(item => (
                                         <div key={item.label} className="flex items-center justify-between rounded-2xl px-3 py-2 bg-white/5 border border-white/10">
                                             <div className="flex items-center gap-3">
                                                 <span className="text-lg">{item.icon}</span>
@@ -657,260 +655,206 @@ const { useState, useEffect, useRef } = React;
                                     ))}
                                 </div>
 
-                                <div>
-                                    <p className="text-[11px] uppercase tracking-[0.25em] text-white/40 mb-3">Tools</p>
-                                    <div className="space-y-2">
-                                        {[{
-                                            label: 'File Types Filter',
-                                            icon: '🎛️',
-                                            description: 'Choisis les catégories'
-                                        }, {
-                                            label: 'Duplicate Detector',
-                                            icon: '🧹',
-                                            description: 'Repère les doublons'
-                                        }].map(tool => (
-                                            <div key={tool.label} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                                                <div className="flex items-center gap-3">
-                                                    <span>{tool.icon}</span>
-                                                    <div>
-                                                        <p className="text-sm font-medium">{tool.label}</p>
-                                                        <p className="text-[11px] text-white/60">{tool.description}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
+                                <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-semibold">Dossier</p>
+                                        <span className="text-xs text-white/50">{config.path ? 'Sélectionné' : 'Aucun'}</span>
+                                    </div>
+                                    <div className="rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-sm truncate">{config.path || 'Choisis un dossier dans Finder'}</div>
+                                    <div className="flex gap-3">
+                                        <button onClick={selectFolder} className="btn-primary flex-1">Choisir…</button>
+                                        <button onClick={restartProcess} className="btn-ghost">Reset</button>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <p className="text-[11px] uppercase tracking-[0.25em] text-white/40 mb-3">Helpers</p>
-                                    <div className="space-y-2">
-                                        {[{
-                                            label: 'Logs Viewer',
-                                            icon: '📜',
-                                            value: `${logs.length} entrées`
-                                        }, {
-                                            label: 'Settings',
-                                            icon: '⚙️',
-                                            value: 'Profil par défaut'
-                                        }].map(helper => (
-                                            <div key={helper.label} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                                                <div className="flex items-center gap-3">
-                                                    <span>{helper.icon}</span>
-                                                    <p className="text-sm font-medium">{helper.label}</p>
+                                <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-semibold">Types analysés</p>
+                                        <span className="text-xs text-white/60">{activeFileTypeCount}/6 actifs</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                    {FILE_TYPE_OPTIONS.map(option => {
+                                        const isActive = !!activeFileTypes[option.key];
+                                        return (
+                                            <button
+                                                key={option.key}
+                                                onClick={() => toggleFileType(option.key)}
+                                                className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${isActive ? 'bg-white text-slate-900 border-white/80 shadow-lg' : 'bg-white/5 border-white/20 text-white/70'}`}
+                                            >
+                                                <span className="text-lg">{option.emoji}</span>
+                                                <div>
+                                                    <p className="text-sm font-semibold">{option.label}</p>
+                                                    <p className="text-[11px] uppercase tracking-[0.2em] text-white/60">{option.category}</p>
                                                 </div>
-                                                <span className="text-xs text-white/60">{helper.value}</span>
-                                            </div>
-                                        ))}
+                                            </button>
+                                        );
+                                    })}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 text-xs text-white/70">
+                                        <label className="space-y-1">
+                                            <span>Âge min (jours)</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={config.min_age_days}
+                                                onChange={(e) => setConfig({ ...config, min_age_days: Math.max(0, parseInt(e.target.value) || 0) })}
+                                                className="filter-input"
+                                            />
+                                        </label>
+                                        <label className="space-y-1">
+                                            <span>Taille min (MB)</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={config.min_size_mb}
+                                                onChange={(e) => setConfig({ ...config, min_size_mb: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                                className="filter-input"
+                                            />
+                                        </label>
                                     </div>
                                 </div>
                             </aside>
 
-                            {/* Main Center Pane */}
-                            <main className="space-y-6">
-                                <section className="relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br from-[#2f55ff]/30 via-[#5c2ac7]/30 to-[#8b5cf6]/20 p-6 backdrop-blur">
-                                    <div className="absolute inset-0 opacity-30" style={{background: 'radial-gradient(circle at top left, rgba(255,255,255,0.35), transparent 55%)'}}></div>
-                                    <div className="relative space-y-6">
-                                        <div className="flex flex-col gap-1">
-                                            <p className="text-sm uppercase tracking-[0.2em] text-white/60">Scan & Analyse des fichiers</p>
-                                            <h2 className="text-3xl font-semibold">Prêt pour un nettoyage intelligent</h2>
-                                            <p className="text-sm text-white/70">Choisis ton dossier, configure les types de fichiers et laisse l'IA faire le tri.</p>
-                                        </div>
-
-                                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                                            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                                <div className="text-xs uppercase tracking-[0.25em] text-white/50 mb-2">Dossier sélectionné</div>
-                                                <p className="text-base font-medium truncate">{config.path || 'Aucun dossier sélectionné'}</p>
-                                            </div>
-                                            <button
-                                                onClick={selectFolder}
-                                                className="rounded-2xl bg-white text-slate-900 font-semibold px-4 py-3 text-sm shadow-lg shadow-white/20 hover:bg-slate-100 transition"
-                                            >
-                                                Ouvrir Finder
-                                            </button>
-                                        </div>
-
-                                        <div className="grid sm:grid-cols-2 gap-4">
-                                            <div className="rounded-2xl bg-white/10 border border-white/15 p-4 space-y-2">
-                                                <label className="text-xs uppercase tracking-[0.25em] text-white/60">Âge minimum (jours)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={config.min_age_days}
-                                                    onChange={(e) => setConfig({...config, min_age_days: Math.max(0, parseInt(e.target.value) || 0)})}
-                                                    className="w-full rounded-2xl bg-white/80 text-slate-900 px-3 py-2 text-sm focus:outline-none"
-                                                />
-                                            </div>
-                                            <div className="rounded-2xl bg-white/10 border border-white/15 p-4 space-y-2">
-                                                <label className="text-xs uppercase tracking-[0.25em] text-white/60">Taille minimum (MB)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={config.min_size_mb}
-                                                    onChange={(e) => setConfig({...config, min_size_mb: Math.max(0, parseFloat(e.target.value) || 0)})}
-                                                    className="w-full rounded-2xl bg-white/80 text-slate-900 px-3 py-2 text-sm focus:outline-none"
-                                                />
-                                            </div>
-                                        </div>
-
+                            <main className="space-y-5">
+                                <section className="rounded-3xl border border-white/15 bg-white/5 p-5 space-y-4 backdrop-blur">
+                                    <div className="flex flex-wrap items-center justify-between gap-4">
                                         <div>
-                                            <div className="flex items-center justify-between mb-3">
-                                                <p className="text-sm font-medium text-white/80">Types de fichiers à analyser</p>
-                                                <span className="text-xs text-white/60">{Object.values(activeFileTypes).filter(Boolean).length}/6 actifs</span>
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                                {FILE_TYPE_OPTIONS.map(option => {
-                                                    const isActive = !!activeFileTypes[option.key];
-                                                    return (
-                                                        <button
-                                                            key={option.key}
-                                                            onClick={() => toggleFileType(option.key)}
-                                                            className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${isActive ? 'bg-white text-slate-900 border-white/80 shadow-lg' : 'bg-white/5 border-white/20 text-white/70 hover:border-white/40'}`}
-                                                        >
-                                                            <span className="text-lg">{option.emoji}</span>
-                                                            <div>
-                                                                <p className="text-sm font-semibold">{option.label}</p>
-                                                                <p className="text-[11px] uppercase tracking-[0.2em] text-white/60">{option.category}</p>
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
+                                            <p className="text-xs uppercase tracking-[0.2em] text-white/60">Contrôle</p>
+                                            <p className="text-lg font-semibold">Scan & Analyse des fichiers</p>
+                                            <p className="text-sm text-white/60">{config.path ? 'Prêt à scanner' : 'Sélectionne un dossier pour commencer'}</p>
                                         </div>
-
-                                        <div className="flex flex-wrap items-center justify-center gap-3">
+                                        <div className="flex flex-wrap gap-2">
                                             <button
                                                 onClick={startScan}
-                                                disabled={status === 'scanning' || !config.path}
-                                                className="inline-flex items-center gap-2 rounded-full bg-white text-slate-900 font-semibold px-6 py-2.5 text-sm shadow-lg shadow-black/20 disabled:opacity-40"
+                                                disabled={!config.path || status === 'scanning'}
+                                                className="btn-primary"
                                             >
                                                 ▶ Scan
                                             </button>
                                             <button
                                                 onClick={stopProcess}
-                                                disabled={!(status === 'scanning' || status === 'analyzing')}
-                                                className="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90 disabled:opacity-30"
+                                                disabled={status === 'idle'}
+                                                className="btn-outline"
                                             >
                                                 ⏸ Stop
                                             </button>
                                             <button
-                                                onClick={restartProcess}
-                                                className="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90"
-                                            >
-                                                ↻ Restart
-                                            </button>
-                                            <button
                                                 onClick={startAnalyze}
                                                 disabled={status === 'analyzing' || candidates.length === 0}
-                                                className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90 disabled:opacity-30"
+                                                className="btn-outline"
                                             >
                                                 🧠 Lancer l'IA
                                             </button>
                                         </div>
-
-                                        {(status === 'scanning' || status === 'analyzing') && (
-                                            <div className="rounded-2xl border border-white/15 bg-white/5 p-4 space-y-3">
-                                                <div className="flex items-center justify-between text-xs text-white/70">
-                                                    <span>{status === 'scanning' ? scanProgress.message || 'Scan en cours' : 'Analyse IA en cours'}</span>
-                                                    <span>{status === 'scanning' ? `${scanProgress.scanned} fichiers` : `${analyzeProgress.current}/${analyzeProgress.total}`}</span>
-                                                </div>
-                                                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
-                                                    <div
-                                                        className="h-full rounded-full bg-white"
-                                                        style={{width: status === 'scanning' ? '100%' : `${(analyzeProgress.current / analyzeProgress.total) * 100 || 0}%`}}
-                                                    ></div>
-                                                </div>
-                                                {aiThinking && (
-                                                    <div className="text-xs text-white/80 font-mono thinking">
-                                                        <p>Analyse: {aiThinking.file}</p>
-                                                        {aiThinking.prompt && (
-                                                            <p className="text-white/60">Prompt: {truncate(aiThinking.prompt, 180)}</p>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-4">
-                                            <h3 className="text-lg font-semibold">Résultats IA</h3>
-                                            <div className="grid gap-4 md:grid-cols-3">
-                                                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                                    <p className="text-xs uppercase tracking-[0.25em] text-white/60">Protégés</p>
-                                                    <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
-                                                        {protectedFiles.length > 0 ? protectedFiles.map((file, idx) => (
-                                                            <li key={`${file.file}-${idx}`} className="flex items-start gap-3 text-sm">
-                                                                <span className="text-rose-200">⚑</span>
-                                                                <div>
-                                                                    <p className="font-semibold">{file.name}</p>
-                                                                    <p className="text-[11px] text-white/60">{file.keyword} • {file.size_h}</p>
-                                                                </div>
-                                                            </li>
-                                                        )) : (
-                                                            <p className="text-xs text-white/60">Aucun fichier sensible.</p>
-                                                        )}
-                                                    </ul>
-                                                </div>
-
-                                                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                                    <p className="text-xs uppercase tracking-[0.25em] text-white/60">Conservés</p>
-                                                    <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
-                                                        {results.should_keep.length > 0 ? results.should_keep.map((file, idx) => (
-                                                            <li key={`${file.file}-keep-${idx}`} className="flex items-start gap-3 text-sm">
-                                                                <span className="text-emerald-200">•</span>
-                                                                <div>
-                                                                    <p className="font-semibold">{file.name}</p>
-                                                                    <p className="text-[11px] text-white/60">{file.reason}</p>
-                                                                </div>
-                                                            </li>
-                                                        )) : (
-                                                            <p className="text-xs text-white/60">Pas encore de décision.</p>
-                                                        )}
-                                                    </ul>
-                                                </div>
-
-                                                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                                    <p className="text-xs uppercase tracking-[0.25em] text-white/60">À supprimer</p>
-                                                    <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
-                                                        {results.can_delete.length > 0 ? results.can_delete.map((file, idx) => (
-                                                            <li key={`${file.file}-delete-${idx}`} className="flex items-center gap-3 text-sm">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={!!selectedDeleteMap[file.file]}
-                                                                    onChange={(e) => toggleDeleteSelection(file.file, e.target.checked)}
-                                                                    className="rounded border-white/40 bg-transparent"
-                                                                />
-                                                                <div className="flex-1">
-                                                                    <p className="font-semibold">{file.name}</p>
-                                                                    <p className="text-[11px] text-white/60">{file.reason}</p>
-                                                                </div>
-                                                                <span className="text-xs text-white/60">{file.size_h}</span>
-                                                            </li>
-                                                        )) : (
-                                                            <p className="text-xs text-white/60">Aucun fichier à supprimer.</p>
-                                                        )}
-                                                    </ul>
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={deleteSelected}
-                                                disabled={selectedDeleteCount === 0}
-                                                className="w-full rounded-full bg-white text-slate-900 font-semibold py-3 text-sm shadow-lg shadow-black/20 disabled:opacity-30"
-                                            >
-                                                Supprimer les fichiers sélectionnés ({selectedDeleteCount})
-                                            </button>
-                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
+                                        <span>{scanProgress.message || 'Attente de scan'}</span>
+                                        <span>•</span>
+                                        <span>{analyzeProgress.total ? `${analyzeProgress.current}/${analyzeProgress.total} analysés` : 'Analyse non démarrée'}</span>
                                     </div>
                                 </section>
 
-                                <section className="grid gap-6 md:grid-cols-2">
-                                    <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4">
+                                {(status === 'scanning' || status === 'analyzing' || aiThinking) && (
+                                    <section className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3 backdrop-blur">
+                                        <div className="flex items-center justify-between text-xs text-white/70">
+                                            <span>{status === 'scanning' ? (scanProgress.message || 'Scan en cours') : 'Analyse IA en cours'}</span>
+                                            <span>{status === 'scanning' ? `${scanProgress.scanned} fichiers` : `${analyzeProgress.current}/${analyzeProgress.total || 0}`}</span>
+                                        </div>
+                                        <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-white"
+                                                style={{ width: status === 'scanning' ? '100%' : `${(analyzeProgress.current / (analyzeProgress.total || 1)) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                        {aiThinking && (
+                                            <div className="text-xs text-white/80 font-mono thinking space-y-1">
+                                                <p>Analyse: {aiThinking.file}</p>
+                                                {aiThinking.prompt && (
+                                                    <p className="text-white/60">Prompt: {truncate(aiThinking.prompt, 160)}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </section>
+                                )}
+
+                                <section className="rounded-3xl border border-white/10 bg-white/5 p-5 space-y-4 backdrop-blur">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold">Résultats IA</h3>
+                                        <span className="text-xs text-white/60">{selectedDeleteCount} sélectionnés</span>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                            <p className="text-xs uppercase tracking-[0.25em] text-white/60">Protégés</p>
+                                            <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                {protectedFiles.length > 0 ? protectedFiles.map((file, idx) => (
+                                                    <li key={`${file.file}-${idx}`} className="flex items-start gap-3 text-sm">
+                                                        <span className="text-rose-200">⚑</span>
+                                                        <div>
+                                                            <p className="font-semibold">{file.name}</p>
+                                                            <p className="text-[11px] text-white/60">{file.keyword} • {file.size_h}</p>
+                                                        </div>
+                                                    </li>
+                                                )) : (
+                                                    <p className="text-xs text-white/60">Aucun fichier sensible.</p>
+                                                )}
+                                            </ul>
+                                        </div>
+                                        <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                            <p className="text-xs uppercase tracking-[0.25em] text-white/60">Conservés</p>
+                                            <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                {results.should_keep.length > 0 ? results.should_keep.map((file, idx) => (
+                                                    <li key={`${file.file}-keep-${idx}`} className="flex items-start gap-3 text-sm">
+                                                        <span className="text-emerald-200">•</span>
+                                                        <div>
+                                                            <p className="font-semibold">{file.name}</p>
+                                                            <p className="text-[11px] text-white/60">{file.reason}</p>
+                                                        </div>
+                                                    </li>
+                                                )) : (
+                                                    <p className="text-xs text-white/60">Pas encore de décision.</p>
+                                                )}
+                                            </ul>
+                                        </div>
+                                        <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                            <p className="text-xs uppercase tracking-[0.25em] text-white/60">À supprimer</p>
+                                            <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                {results.can_delete.length > 0 ? results.can_delete.map((file, idx) => (
+                                                    <li key={`${file.file}-delete-${idx}`} className="flex items-center gap-3 text-sm">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!selectedDeleteMap[file.file]}
+                                                            onChange={(e) => toggleDeleteSelection(file.file, e.target.checked)}
+                                                            className="rounded border-white/40 bg-transparent"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <p className="font-semibold">{file.name}</p>
+                                                            <p className="text-[11px] text-white/60">{file.reason}</p>
+                                                        </div>
+                                                        <span className="text-xs text-white/60">{file.size_h}</span>
+                                                    </li>
+                                                )) : (
+                                                    <p className="text-xs text-white/60">Aucun fichier à supprimer.</p>
+                                                )}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={deleteSelected}
+                                        disabled={selectedDeleteCount === 0}
+                                        className="btn-primary w-full"
+                                    >
+                                        Supprimer les fichiers sélectionnés ({selectedDeleteCount})
+                                    </button>
+                                </section>
+
+                                <section className="grid gap-4 md:grid-cols-2">
+                                    <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-semibold">Statistiques</h3>
                                             <span className="text-xs text-white/50">Dernier scan</span>
                                         </div>
                                         {stats ? (
-                                            <div className="space-y-3 text-sm text-white/70">
+                                            <div className="space-y-2 text-sm text-white/70">
                                                 <div className="flex justify-between">
                                                     <span>Total scannés</span>
                                                     <span>{stats.total_files || 0}</span>
@@ -927,19 +871,12 @@ const { useState, useEffect, useRef } = React;
                                                     <span>Protégés</span>
                                                     <span>{protectedFiles.length}</span>
                                                 </div>
-                                                {stats.stats && Object.entries(stats.stats).map(([category, stat]) => (
-                                                    <div key={category} className="flex justify-between text-xs">
-                                                        <span>{category}</span>
-                                                        <span>{stat.count} • {stat.size_h}</span>
-                                                    </div>
-                                                ))}
                                             </div>
                                         ) : (
                                             <p className="text-sm text-white/60">Aucune donnée pour l'instant.</p>
                                         )}
                                     </div>
-
-                                    <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4">
+                                    <div className="rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-semibold">Suppression rapide</h3>
                                             <span className="text-xs text-white/50">Catégories</span>
@@ -967,12 +904,7 @@ const { useState, useEffect, useRef } = React;
                                                         </label>
                                                     );
                                                 })}
-                                                <button
-                                                    onClick={quickDeleteByCategory}
-                                                    className="w-full rounded-full bg-white/15 border border-white/20 py-2 text-sm font-semibold text-white"
-                                                >
-                                                    Supprimer les catégories cochées
-                                                </button>
+                                                <button onClick={quickDeleteByCategory} className="btn-outline w-full">Supprimer les catégories cochées</button>
                                             </div>
                                         ) : (
                                             <p className="text-sm text-white/60">Lance un scan pour afficher ces options.</p>
@@ -981,13 +913,12 @@ const { useState, useEffect, useRef } = React;
                                 </section>
                             </main>
 
-                            {/* Logs */}
-                            <aside className="rounded-3xl bg-white/5 border border-white/10 p-6 flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
+                            <aside className="rounded-3xl bg-white/5 border border-white/10 p-5 flex flex-col backdrop-blur">
+                                <div className="flex items-center justify-between mb-3">
                                     <h3 className="text-lg font-semibold">Logs en direct</h3>
-                                    <span className="text-xs text-white/50">{logs.length}</span>
+                                    <button className="btn-ghost text-xs" onClick={() => setLogs([])}>Effacer</button>
                                 </div>
-                                <div className="flex-1 rounded-2xl bg-[#070c1f] border border-white/10 p-4 overflow-y-auto font-mono text-xs leading-relaxed text-white/80 space-y-3">
+                                <div className="flex-1 rounded-2xl border border-white/10 p-4 overflow-y-auto font-mono text-xs leading-relaxed text-white/80 space-y-3" style={{ background: '#070c1f' }}>
                                     {logs.length === 0 && <p className="text-white/40">En attente d'évènements…</p>}
                                     {logs.map((log, i) => (
                                         <div key={i} className="space-y-1">
@@ -1002,9 +933,7 @@ const { useState, useEffect, useRef } = React;
                                         </div>
                                     ))}
                                 </div>
-                                <div className="mt-4 text-[11px] text-white/50">
-                                    Les journaux sont automatiquement rafraîchis depuis le backend via WebSocket.
-                                </div>
+                                <p className="mt-4 text-[11px] text-white/50">Les journaux sont mis à jour automatiquement.</p>
                             </aside>
                         </div>
                     </div>

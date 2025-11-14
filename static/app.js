@@ -1,14 +1,4 @@
 const { useState, useEffect, useRef } = React;
-function jsxDEV_7x81h0kn(type, props, key) {
-  if (key !== undefined && key !== null) {
-    if (!props || typeof props !== "object") {
-      props = { key };
-    } else if (!Object.prototype.hasOwnProperty.call(props, "key")) {
-      props = { ...props, key };
-    }
-  }
-  return React.createElement(type, props);
-}
 const inferApiBase = () => {
   const origin = window.location.origin;
   if (origin && origin.startsWith("http")) {
@@ -94,6 +84,7 @@ function App() {
   const [logs, setLogs] = useState(loadState("logs", []));
   const abortController = useRef(null);
   const activeFileTypes = { ...DEFAULT_FILE_TYPES, ...config.fileTypes || {} };
+  const activeFileTypeCount = Object.values(activeFileTypes).filter(Boolean).length;
   const toggleFileType = (key) => {
     setConfig((prev) => {
       const merged = { ...DEFAULT_FILE_TYPES, ...prev.fileTypes || {} };
@@ -528,27 +519,51 @@ function App() {
     }));
   };
   return jsxDEV_7x81h0kn("div", {
-    className: "min-h-screen bg-gradient-to-br from-[#040818] via-[#111d33] to-[#1d1f4a] text-white",
+    className: "min-h-screen text-white",
+    style: { background: "radial-gradient(circle at 0% 0%, rgba(57,84,222,0.3), transparent 60%), #050a19" },
     children: jsxDEV_7x81h0kn("div", {
-      className: "max-w-7xl mx-auto px-4 py-10 space-y-8",
+      className: "max-w-7xl mx-auto px-4 py-8 space-y-6",
       children: [
         jsxDEV_7x81h0kn("header", {
           className: "space-y-2",
           children: [
             jsxDEV_7x81h0kn("p", {
-              className: "text-xs uppercase tracking-[0.3em] text-white/40",
+              className: "text-xs uppercase tracking-[0.3em] text-white/50",
               children: "AI Cleaner"
             }, undefined, false, undefined, this),
             jsxDEV_7x81h0kn("div", {
+              className: "flex flex-wrap items-end justify-between gap-4",
               children: [
-                jsxDEV_7x81h0kn("h1", {
-                  className: "text-4xl font-semibold tracking-tight",
-                  children: "AI Cleaner v3.0"
-                }, undefined, false, undefined, this),
-                jsxDEV_7x81h0kn("p", {
-                  className: "text-sm text-white/70",
-                  children: "Interface inspirée de MacCleaner pour orchestrer tes scans et l'IA."
-                }, undefined, false, undefined, this)
+                jsxDEV_7x81h0kn("div", {
+                  children: [
+                    jsxDEV_7x81h0kn("h1", {
+                      className: "text-4xl font-semibold tracking-tight",
+                      children: "AI Cleaner v3.0"
+                    }, undefined, false, undefined, this),
+                    jsxDEV_7x81h0kn("p", {
+                      className: "text-sm text-white/70",
+                      children: "Nettoyage assisté par IA dans une seule vue lisible."
+                    }, undefined, false, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                jsxDEV_7x81h0kn("div", {
+                  style: { textAlign: "right" },
+                  className: "text-xs text-white/60 space-y-1",
+                  children: [
+                    jsxDEV_7x81h0kn("p", {
+                      children: [
+                        candidates.length,
+                        " fichiers candidats"
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("p", {
+                      children: [
+                        selectedDeleteCount,
+                        " prêts à supprimer"
+                      ]
+                    }, undefined, true, undefined, this)
+                  ]
+                }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this)
           ]
@@ -557,23 +572,15 @@ function App() {
           className: "grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)360px]",
           children: [
             jsxDEV_7x81h0kn("aside", {
-              className: "bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6 backdrop-blur",
+              className: "space-y-5",
               children: [
                 jsxDEV_7x81h0kn("div", {
-                  className: "space-y-3",
-                  children: [{
-                    label: "Overview",
-                    icon: "\uD83D\uDCCA",
-                    value: overviewSizeLabel
-                  }, {
-                    label: "Scan Folder",
-                    icon: "\uD83D\uDDC2️",
-                    value: scanStatusLabel
-                  }, {
-                    label: "AI Analysis",
-                    icon: "\uD83E\uDDE0",
-                    value: aiStatusLabel
-                  }].map((item) => jsxDEV_7x81h0kn("div", {
+                  className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
+                  children: [
+                    { label: "Overview", icon: "\uD83D\uDCE6", value: overviewSizeLabel },
+                    { label: "Scan Folder", icon: "\uD83D\uDDC2️", value: scanStatusLabel },
+                    { label: "AI Analysis", icon: "\uD83E\uDDE0", value: aiStatusLabel }
+                  ].map((item) => jsxDEV_7x81h0kn("div", {
                     className: "flex items-center justify-between rounded-2xl px-3 py-2 bg-white/5 border border-white/10",
                     children: [
                       jsxDEV_7x81h0kn("div", {
@@ -597,437 +604,229 @@ function App() {
                   }, item.label, true, undefined, this))
                 }, undefined, false, undefined, this),
                 jsxDEV_7x81h0kn("div", {
+                  className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("p", {
-                      className: "text-[11px] uppercase tracking-[0.25em] text-white/40 mb-3",
-                      children: "Tools"
+                    jsxDEV_7x81h0kn("div", {
+                      className: "flex items-center justify-between",
+                      children: [
+                        jsxDEV_7x81h0kn("p", {
+                          className: "text-sm font-semibold",
+                          children: "Dossier"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          className: "text-xs text-white/50",
+                          children: config.path ? "Sélectionné" : "Aucun"
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("div", {
+                      className: "rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-sm truncate",
+                      children: config.path || "Choisis un dossier dans Finder"
                     }, undefined, false, undefined, this),
                     jsxDEV_7x81h0kn("div", {
-                      className: "space-y-2",
-                      children: [{
-                        label: "File Types Filter",
-                        icon: "\uD83C\uDF9B️",
-                        description: "Choisis les catégories"
-                      }, {
-                        label: "Duplicate Detector",
-                        icon: "\uD83E\uDDF9",
-                        description: "Repère les doublons"
-                      }].map((tool) => jsxDEV_7x81h0kn("div", {
-                        className: "rounded-2xl border border-white/10 bg-white/5 px-3 py-2",
-                        children: jsxDEV_7x81h0kn("div", {
-                          className: "flex items-center gap-3",
+                      className: "flex gap-3",
+                      children: [
+                        jsxDEV_7x81h0kn("button", {
+                          onClick: selectFolder,
+                          className: "btn-primary flex-1",
+                          children: "Choisir…"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("button", {
+                          onClick: restartProcess,
+                          className: "btn-ghost",
+                          children: "Reset"
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                jsxDEV_7x81h0kn("div", {
+                  className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur",
+                  children: [
+                    jsxDEV_7x81h0kn("div", {
+                      className: "flex items-center justify-between",
+                      children: [
+                        jsxDEV_7x81h0kn("p", {
+                          className: "text-sm font-semibold",
+                          children: "Types analysés"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          className: "text-xs text-white/60",
+                          children: [
+                            activeFileTypeCount,
+                            "/6 actifs"
+                          ]
+                        }, undefined, true, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("div", {
+                      className: "grid grid-cols-2 gap-3",
+                      children: FILE_TYPE_OPTIONS.map((option) => {
+                        const isActive = !!activeFileTypes[option.key];
+                        return jsxDEV_7x81h0kn("button", {
+                          onClick: () => toggleFileType(option.key),
+                          className: `flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${isActive ? "bg-white text-slate-900 border-white/80 shadow-lg" : "bg-white/5 border-white/20 text-white/70"}`,
                           children: [
                             jsxDEV_7x81h0kn("span", {
-                              children: tool.icon
+                              className: "text-lg",
+                              children: option.emoji
                             }, undefined, false, undefined, this),
                             jsxDEV_7x81h0kn("div", {
                               children: [
                                 jsxDEV_7x81h0kn("p", {
-                                  className: "text-sm font-medium",
-                                  children: tool.label
+                                  className: "text-sm font-semibold",
+                                  children: option.label
                                 }, undefined, false, undefined, this),
                                 jsxDEV_7x81h0kn("p", {
-                                  className: "text-[11px] text-white/60",
-                                  children: tool.description
+                                  className: "text-[11px] uppercase tracking-[0.2em] text-white/60",
+                                  children: option.category
                                 }, undefined, false, undefined, this)
                               ]
                             }, undefined, true, undefined, this)
                           ]
-                        }, undefined, true, undefined, this)
-                      }, tool.label, false, undefined, this))
-                    }, undefined, false, undefined, this)
-                  ]
-                }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("div", {
-                  children: [
-                    jsxDEV_7x81h0kn("p", {
-                      className: "text-[11px] uppercase tracking-[0.25em] text-white/40 mb-3",
-                      children: "Helpers"
+                        }, option.key, true, undefined, this);
+                      })
                     }, undefined, false, undefined, this),
                     jsxDEV_7x81h0kn("div", {
-                      className: "space-y-2",
-                      children: [{
-                        label: "Logs Viewer",
-                        icon: "\uD83D\uDCDC",
-                        value: `${logs.length} entrées`
-                      }, {
-                        label: "Settings",
-                        icon: "⚙️",
-                        value: "Profil par défaut"
-                      }].map((helper) => jsxDEV_7x81h0kn("div", {
-                        className: "flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2",
-                        children: [
-                          jsxDEV_7x81h0kn("div", {
-                            className: "flex items-center gap-3",
-                            children: [
-                              jsxDEV_7x81h0kn("span", {
-                                children: helper.icon
-                              }, undefined, false, undefined, this),
-                              jsxDEV_7x81h0kn("p", {
-                                className: "text-sm font-medium",
-                                children: helper.label
-                              }, undefined, false, undefined, this)
-                            ]
-                          }, undefined, true, undefined, this),
-                          jsxDEV_7x81h0kn("span", {
-                            className: "text-xs text-white/60",
-                            children: helper.value
-                          }, undefined, false, undefined, this)
-                        ]
-                      }, helper.label, true, undefined, this))
-                    }, undefined, false, undefined, this)
+                      className: "grid grid-cols-2 gap-3 text-xs text-white/70",
+                      children: [
+                        jsxDEV_7x81h0kn("label", {
+                          className: "space-y-1",
+                          children: [
+                            jsxDEV_7x81h0kn("span", {
+                              children: "Âge min (jours)"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("input", {
+                              type: "number",
+                              min: "0",
+                              value: config.min_age_days,
+                              onChange: (e) => setConfig({ ...config, min_age_days: Math.max(0, parseInt(e.target.value) || 0) }),
+                              className: "filter-input"
+                            }, undefined, false, undefined, this)
+                          ]
+                        }, undefined, true, undefined, this),
+                        jsxDEV_7x81h0kn("label", {
+                          className: "space-y-1",
+                          children: [
+                            jsxDEV_7x81h0kn("span", {
+                              children: "Taille min (MB)"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("input", {
+                              type: "number",
+                              min: "0",
+                              value: config.min_size_mb,
+                              onChange: (e) => setConfig({ ...config, min_size_mb: Math.max(0, parseFloat(e.target.value) || 0) }),
+                              className: "filter-input"
+                            }, undefined, false, undefined, this)
+                          ]
+                        }, undefined, true, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this)
                   ]
                 }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this),
             jsxDEV_7x81h0kn("main", {
-              className: "space-y-6",
+              className: "space-y-5",
               children: [
                 jsxDEV_7x81h0kn("section", {
-                  className: "relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br from-[#2f55ff]/30 via-[#5c2ac7]/30 to-[#8b5cf6]/20 p-6 backdrop-blur",
+                  className: "rounded-3xl border border-white/15 bg-white/5 p-5 space-y-4 backdrop-blur",
                   children: [
                     jsxDEV_7x81h0kn("div", {
-                      className: "absolute inset-0 opacity-30",
-                      style: { background: "radial-gradient(circle at top left, rgba(255,255,255,0.35), transparent 55%)" }
-                    }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
-                      className: "relative space-y-6",
+                      className: "flex flex-wrap items-center justify-between gap-4",
                       children: [
                         jsxDEV_7x81h0kn("div", {
-                          className: "flex flex-col gap-1",
                           children: [
                             jsxDEV_7x81h0kn("p", {
-                              className: "text-sm uppercase tracking-[0.2em] text-white/60",
+                              className: "text-xs uppercase tracking-[0.2em] text-white/60",
+                              children: "Contrôle"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("p", {
+                              className: "text-lg font-semibold",
                               children: "Scan & Analyse des fichiers"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("h2", {
-                              className: "text-3xl font-semibold",
-                              children: "Prêt pour un nettoyage intelligent"
-                            }, undefined, false, undefined, this),
                             jsxDEV_7x81h0kn("p", {
-                              className: "text-sm text-white/70",
-                              children: "Choisis ton dossier, configure les types de fichiers et laisse l'IA faire le tri."
+                              className: "text-sm text-white/60",
+                              children: config.path ? "Prêt à scanner" : "Sélectionne un dossier pour commencer"
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
                         jsxDEV_7x81h0kn("div", {
-                          className: "grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]",
-                          children: [
-                            jsxDEV_7x81h0kn("div", {
-                              className: "rounded-2xl bg-white/10 border border-white/15 p-4",
-                              children: [
-                                jsxDEV_7x81h0kn("div", {
-                                  className: "text-xs uppercase tracking-[0.25em] text-white/50 mb-2",
-                                  children: "Dossier sélectionné"
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("p", {
-                                  className: "text-base font-medium truncate",
-                                  children: config.path || "Aucun dossier sélectionné"
-                                }, undefined, false, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("button", {
-                              onClick: selectFolder,
-                              className: "rounded-2xl bg-white text-slate-900 font-semibold px-4 py-3 text-sm shadow-lg shadow-white/20 hover:bg-slate-100 transition",
-                              children: "Ouvrir Finder"
-                            }, undefined, false, undefined, this)
-                          ]
-                        }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
-                          className: "grid sm:grid-cols-2 gap-4",
-                          children: [
-                            jsxDEV_7x81h0kn("div", {
-                              className: "rounded-2xl bg-white/10 border border-white/15 p-4 space-y-2",
-                              children: [
-                                jsxDEV_7x81h0kn("label", {
-                                  className: "text-xs uppercase tracking-[0.25em] text-white/60",
-                                  children: "Âge minimum (jours)"
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("input", {
-                                  type: "number",
-                                  min: "0",
-                                  value: config.min_age_days,
-                                  onChange: (e) => setConfig({ ...config, min_age_days: Math.max(0, parseInt(e.target.value) || 0) }),
-                                  className: "w-full rounded-2xl bg-white/80 text-slate-900 px-3 py-2 text-sm focus:outline-none"
-                                }, undefined, false, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
-                              className: "rounded-2xl bg-white/10 border border-white/15 p-4 space-y-2",
-                              children: [
-                                jsxDEV_7x81h0kn("label", {
-                                  className: "text-xs uppercase tracking-[0.25em] text-white/60",
-                                  children: "Taille minimum (MB)"
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("input", {
-                                  type: "number",
-                                  min: "0",
-                                  value: config.min_size_mb,
-                                  onChange: (e) => setConfig({ ...config, min_size_mb: Math.max(0, parseFloat(e.target.value) || 0) }),
-                                  className: "w-full rounded-2xl bg-white/80 text-slate-900 px-3 py-2 text-sm focus:outline-none"
-                                }, undefined, false, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this)
-                          ]
-                        }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
-                          children: [
-                            jsxDEV_7x81h0kn("div", {
-                              className: "flex items-center justify-between mb-3",
-                              children: [
-                                jsxDEV_7x81h0kn("p", {
-                                  className: "text-sm font-medium text-white/80",
-                                  children: "Types de fichiers à analyser"
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
-                                  className: "text-xs text-white/60",
-                                  children: [
-                                    Object.values(activeFileTypes).filter(Boolean).length,
-                                    "/6 actifs"
-                                  ]
-                                }, undefined, true, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
-                              className: "grid grid-cols-2 md:grid-cols-3 gap-3",
-                              children: FILE_TYPE_OPTIONS.map((option) => {
-                                const isActive = !!activeFileTypes[option.key];
-                                return jsxDEV_7x81h0kn("button", {
-                                  onClick: () => toggleFileType(option.key),
-                                  className: `flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${isActive ? "bg-white text-slate-900 border-white/80 shadow-lg" : "bg-white/5 border-white/20 text-white/70 hover:border-white/40"}`,
-                                  children: [
-                                    jsxDEV_7x81h0kn("span", {
-                                      className: "text-lg",
-                                      children: option.emoji
-                                    }, undefined, false, undefined, this),
-                                    jsxDEV_7x81h0kn("div", {
-                                      children: [
-                                        jsxDEV_7x81h0kn("p", {
-                                          className: "text-sm font-semibold",
-                                          children: option.label
-                                        }, undefined, false, undefined, this),
-                                        jsxDEV_7x81h0kn("p", {
-                                          className: "text-[11px] uppercase tracking-[0.2em] text-white/60",
-                                          children: option.category
-                                        }, undefined, false, undefined, this)
-                                      ]
-                                    }, undefined, true, undefined, this)
-                                  ]
-                                }, option.key, true, undefined, this);
-                              })
-                            }, undefined, false, undefined, this)
-                          ]
-                        }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
-                          className: "flex flex-wrap items-center justify-center gap-3",
+                          className: "flex flex-wrap gap-2",
                           children: [
                             jsxDEV_7x81h0kn("button", {
                               onClick: startScan,
-                              disabled: status === "scanning" || !config.path,
-                              className: "inline-flex items-center gap-2 rounded-full bg-white text-slate-900 font-semibold px-6 py-2.5 text-sm shadow-lg shadow-black/20 disabled:opacity-40",
+                              disabled: !config.path || status === "scanning",
+                              className: "btn-primary",
                               children: "▶ Scan"
                             }, undefined, false, undefined, this),
                             jsxDEV_7x81h0kn("button", {
                               onClick: stopProcess,
-                              disabled: !(status === "scanning" || status === "analyzing"),
-                              className: "inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90 disabled:opacity-30",
+                              disabled: status === "idle",
+                              className: "btn-outline",
                               children: "⏸ Stop"
-                            }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("button", {
-                              onClick: restartProcess,
-                              className: "inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90",
-                              children: "↻ Restart"
                             }, undefined, false, undefined, this),
                             jsxDEV_7x81h0kn("button", {
                               onClick: startAnalyze,
                               disabled: status === "analyzing" || candidates.length === 0,
-                              className: "inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/30 px-6 py-2.5 text-sm font-semibold text-white/90 disabled:opacity-30",
+                              className: "btn-outline",
                               children: "\uD83E\uDDE0 Lancer l'IA"
                             }, undefined, false, undefined, this)
                           ]
-                        }, undefined, true, undefined, this),
-                        (status === "scanning" || status === "analyzing") && jsxDEV_7x81h0kn("div", {
-                          className: "rounded-2xl border border-white/15 bg-white/5 p-4 space-y-3",
+                        }, undefined, true, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("div", {
+                      className: "flex flex-wrap items-center gap-3 text-xs text-white/60",
+                      children: [
+                        jsxDEV_7x81h0kn("span", {
+                          children: scanProgress.message || "Attente de scan"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          children: "•"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          children: analyzeProgress.total ? `${analyzeProgress.current}/${analyzeProgress.total} analysés` : "Analyse non démarrée"
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                (status === "scanning" || status === "analyzing" || aiThinking) && jsxDEV_7x81h0kn("section", {
+                  className: "rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3 backdrop-blur",
+                  children: [
+                    jsxDEV_7x81h0kn("div", {
+                      className: "flex items-center justify-between text-xs text-white/70",
+                      children: [
+                        jsxDEV_7x81h0kn("span", {
+                          children: status === "scanning" ? scanProgress.message || "Scan en cours" : "Analyse IA en cours"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          children: status === "scanning" ? `${scanProgress.scanned} fichiers` : `${analyzeProgress.current}/${analyzeProgress.total || 0}`
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("div", {
+                      className: "w-full bg-white/10 rounded-full h-2 overflow-hidden",
+                      children: jsxDEV_7x81h0kn("div", {
+                        className: "h-full rounded-full bg-white",
+                        style: { width: status === "scanning" ? "100%" : `${analyzeProgress.current / (analyzeProgress.total || 1) * 100}%` }
+                      }, undefined, false, undefined, this)
+                    }, undefined, false, undefined, this),
+                    aiThinking && jsxDEV_7x81h0kn("div", {
+                      className: "text-xs text-white/80 font-mono thinking space-y-1",
+                      children: [
+                        jsxDEV_7x81h0kn("p", {
                           children: [
-                            jsxDEV_7x81h0kn("div", {
-                              className: "flex items-center justify-between text-xs text-white/70",
-                              children: [
-                                jsxDEV_7x81h0kn("span", {
-                                  children: status === "scanning" ? scanProgress.message || "Scan en cours" : "Analyse IA en cours"
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
-                                  children: status === "scanning" ? `${scanProgress.scanned} fichiers` : `${analyzeProgress.current}/${analyzeProgress.total}`
-                                }, undefined, false, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
-                              className: "w-full bg-white/10 rounded-full h-2 overflow-hidden",
-                              children: jsxDEV_7x81h0kn("div", {
-                                className: "h-full rounded-full bg-white",
-                                style: { width: status === "scanning" ? "100%" : `${analyzeProgress.current / analyzeProgress.total * 100 || 0}%` }
-                              }, undefined, false, undefined, this)
-                            }, undefined, false, undefined, this),
-                            aiThinking && jsxDEV_7x81h0kn("div", {
-                              className: "text-xs text-white/80 font-mono thinking",
-                              children: [
-                                jsxDEV_7x81h0kn("p", {
-                                  children: [
-                                    "Analyse: ",
-                                    aiThinking.file
-                                  ]
-                                }, undefined, true, undefined, this),
-                                aiThinking.prompt && jsxDEV_7x81h0kn("p", {
-                                  className: "text-white/60",
-                                  children: [
-                                    "Prompt: ",
-                                    truncate(aiThinking.prompt, 180)
-                                  ]
-                                }, undefined, true, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this)
+                            "Analyse: ",
+                            aiThinking.file
                           ]
                         }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
-                          className: "space-y-4",
+                        aiThinking.prompt && jsxDEV_7x81h0kn("p", {
+                          className: "text-white/60",
                           children: [
-                            jsxDEV_7x81h0kn("h3", {
-                              className: "text-lg font-semibold",
-                              children: "Résultats IA"
-                            }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
-                              className: "grid gap-4 md:grid-cols-3",
-                              children: [
-                                jsxDEV_7x81h0kn("div", {
-                                  className: "rounded-2xl bg-white/10 border border-white/15 p-4",
-                                  children: [
-                                    jsxDEV_7x81h0kn("p", {
-                                      className: "text-xs uppercase tracking-[0.25em] text-white/60",
-                                      children: "Protégés"
-                                    }, undefined, false, undefined, this),
-                                    jsxDEV_7x81h0kn("ul", {
-                                      className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                                      children: protectedFiles.length > 0 ? protectedFiles.map((file, idx) => jsxDEV_7x81h0kn("li", {
-                                        className: "flex items-start gap-3 text-sm",
-                                        children: [
-                                          jsxDEV_7x81h0kn("span", {
-                                            className: "text-rose-200",
-                                            children: "⚑"
-                                          }, undefined, false, undefined, this),
-                                          jsxDEV_7x81h0kn("div", {
-                                            children: [
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "font-semibold",
-                                                children: file.name
-                                              }, undefined, false, undefined, this),
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "text-[11px] text-white/60",
-                                                children: [
-                                                  file.keyword,
-                                                  " • ",
-                                                  file.size_h
-                                                ]
-                                              }, undefined, true, undefined, this)
-                                            ]
-                                          }, undefined, true, undefined, this)
-                                        ]
-                                      }, `${file.file}-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
-                                        className: "text-xs text-white/60",
-                                        children: "Aucun fichier sensible."
-                                      }, undefined, false, undefined, this)
-                                    }, undefined, false, undefined, this)
-                                  ]
-                                }, undefined, true, undefined, this),
-                                jsxDEV_7x81h0kn("div", {
-                                  className: "rounded-2xl bg-white/10 border border-white/15 p-4",
-                                  children: [
-                                    jsxDEV_7x81h0kn("p", {
-                                      className: "text-xs uppercase tracking-[0.25em] text-white/60",
-                                      children: "Conservés"
-                                    }, undefined, false, undefined, this),
-                                    jsxDEV_7x81h0kn("ul", {
-                                      className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                                      children: results.should_keep.length > 0 ? results.should_keep.map((file, idx) => jsxDEV_7x81h0kn("li", {
-                                        className: "flex items-start gap-3 text-sm",
-                                        children: [
-                                          jsxDEV_7x81h0kn("span", {
-                                            className: "text-emerald-200",
-                                            children: "•"
-                                          }, undefined, false, undefined, this),
-                                          jsxDEV_7x81h0kn("div", {
-                                            children: [
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "font-semibold",
-                                                children: file.name
-                                              }, undefined, false, undefined, this),
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "text-[11px] text-white/60",
-                                                children: file.reason
-                                              }, undefined, false, undefined, this)
-                                            ]
-                                          }, undefined, true, undefined, this)
-                                        ]
-                                      }, `${file.file}-keep-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
-                                        className: "text-xs text-white/60",
-                                        children: "Pas encore de décision."
-                                      }, undefined, false, undefined, this)
-                                    }, undefined, false, undefined, this)
-                                  ]
-                                }, undefined, true, undefined, this),
-                                jsxDEV_7x81h0kn("div", {
-                                  className: "rounded-2xl bg-white/10 border border-white/15 p-4",
-                                  children: [
-                                    jsxDEV_7x81h0kn("p", {
-                                      className: "text-xs uppercase tracking-[0.25em] text-white/60",
-                                      children: "À supprimer"
-                                    }, undefined, false, undefined, this),
-                                    jsxDEV_7x81h0kn("ul", {
-                                      className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                                      children: results.can_delete.length > 0 ? results.can_delete.map((file, idx) => jsxDEV_7x81h0kn("li", {
-                                        className: "flex items-center gap-3 text-sm",
-                                        children: [
-                                          jsxDEV_7x81h0kn("input", {
-                                            type: "checkbox",
-                                            checked: !!selectedDeleteMap[file.file],
-                                            onChange: (e) => toggleDeleteSelection(file.file, e.target.checked),
-                                            className: "rounded border-white/40 bg-transparent"
-                                          }, undefined, false, undefined, this),
-                                          jsxDEV_7x81h0kn("div", {
-                                            className: "flex-1",
-                                            children: [
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "font-semibold",
-                                                children: file.name
-                                              }, undefined, false, undefined, this),
-                                              jsxDEV_7x81h0kn("p", {
-                                                className: "text-[11px] text-white/60",
-                                                children: file.reason
-                                              }, undefined, false, undefined, this)
-                                            ]
-                                          }, undefined, true, undefined, this),
-                                          jsxDEV_7x81h0kn("span", {
-                                            className: "text-xs text-white/60",
-                                            children: file.size_h
-                                          }, undefined, false, undefined, this)
-                                        ]
-                                      }, `${file.file}-delete-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
-                                        className: "text-xs text-white/60",
-                                        children: "Aucun fichier à supprimer."
-                                      }, undefined, false, undefined, this)
-                                    }, undefined, false, undefined, this)
-                                  ]
-                                }, undefined, true, undefined, this)
-                              ]
-                            }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("button", {
-                              onClick: deleteSelected,
-                              disabled: selectedDeleteCount === 0,
-                              className: "w-full rounded-full bg-white text-slate-900 font-semibold py-3 text-sm shadow-lg shadow-black/20 disabled:opacity-30",
-                              children: [
-                                "Supprimer les fichiers sélectionnés (",
-                                selectedDeleteCount,
-                                ")"
-                              ]
-                            }, undefined, true, undefined, this)
+                            "Prompt: ",
+                            truncate(aiThinking.prompt, 160)
                           ]
                         }, undefined, true, undefined, this)
                       ]
@@ -1035,10 +834,165 @@ function App() {
                   ]
                 }, undefined, true, undefined, this),
                 jsxDEV_7x81h0kn("section", {
-                  className: "grid gap-6 md:grid-cols-2",
+                  className: "rounded-3xl border border-white/10 bg-white/5 p-5 space-y-4 backdrop-blur",
                   children: [
                     jsxDEV_7x81h0kn("div", {
-                      className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4",
+                      className: "flex items-center justify-between",
+                      children: [
+                        jsxDEV_7x81h0kn("h3", {
+                          className: "text-lg font-semibold",
+                          children: "Résultats IA"
+                        }, undefined, false, undefined, this),
+                        jsxDEV_7x81h0kn("span", {
+                          className: "text-xs text-white/60",
+                          children: [
+                            selectedDeleteCount,
+                            " sélectionnés"
+                          ]
+                        }, undefined, true, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("div", {
+                      className: "grid gap-4 md:grid-cols-3",
+                      children: [
+                        jsxDEV_7x81h0kn("div", {
+                          className: "rounded-2xl bg-white/5 border border-white/10 p-4",
+                          children: [
+                            jsxDEV_7x81h0kn("p", {
+                              className: "text-xs uppercase tracking-[0.25em] text-white/60",
+                              children: "Protégés"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("ul", {
+                              className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
+                              children: protectedFiles.length > 0 ? protectedFiles.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                                className: "flex items-start gap-3 text-sm",
+                                children: [
+                                  jsxDEV_7x81h0kn("span", {
+                                    className: "text-rose-200",
+                                    children: "⚑"
+                                  }, undefined, false, undefined, this),
+                                  jsxDEV_7x81h0kn("div", {
+                                    children: [
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "font-semibold",
+                                        children: file.name
+                                      }, undefined, false, undefined, this),
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "text-[11px] text-white/60",
+                                        children: [
+                                          file.keyword,
+                                          " • ",
+                                          file.size_h
+                                        ]
+                                      }, undefined, true, undefined, this)
+                                    ]
+                                  }, undefined, true, undefined, this)
+                                ]
+                              }, `${file.file}-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                                className: "text-xs text-white/60",
+                                children: "Aucun fichier sensible."
+                              }, undefined, false, undefined, this)
+                            }, undefined, false, undefined, this)
+                          ]
+                        }, undefined, true, undefined, this),
+                        jsxDEV_7x81h0kn("div", {
+                          className: "rounded-2xl bg-white/5 border border-white/10 p-4",
+                          children: [
+                            jsxDEV_7x81h0kn("p", {
+                              className: "text-xs uppercase tracking-[0.25em] text-white/60",
+                              children: "Conservés"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("ul", {
+                              className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
+                              children: results.should_keep.length > 0 ? results.should_keep.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                                className: "flex items-start gap-3 text-sm",
+                                children: [
+                                  jsxDEV_7x81h0kn("span", {
+                                    className: "text-emerald-200",
+                                    children: "•"
+                                  }, undefined, false, undefined, this),
+                                  jsxDEV_7x81h0kn("div", {
+                                    children: [
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "font-semibold",
+                                        children: file.name
+                                      }, undefined, false, undefined, this),
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "text-[11px] text-white/60",
+                                        children: file.reason
+                                      }, undefined, false, undefined, this)
+                                    ]
+                                  }, undefined, true, undefined, this)
+                                ]
+                              }, `${file.file}-keep-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                                className: "text-xs text-white/60",
+                                children: "Pas encore de décision."
+                              }, undefined, false, undefined, this)
+                            }, undefined, false, undefined, this)
+                          ]
+                        }, undefined, true, undefined, this),
+                        jsxDEV_7x81h0kn("div", {
+                          className: "rounded-2xl bg-white/5 border border-white/10 p-4",
+                          children: [
+                            jsxDEV_7x81h0kn("p", {
+                              className: "text-xs uppercase tracking-[0.25em] text-white/60",
+                              children: "À supprimer"
+                            }, undefined, false, undefined, this),
+                            jsxDEV_7x81h0kn("ul", {
+                              className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
+                              children: results.can_delete.length > 0 ? results.can_delete.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                                className: "flex items-center gap-3 text-sm",
+                                children: [
+                                  jsxDEV_7x81h0kn("input", {
+                                    type: "checkbox",
+                                    checked: !!selectedDeleteMap[file.file],
+                                    onChange: (e) => toggleDeleteSelection(file.file, e.target.checked),
+                                    className: "rounded border-white/40 bg-transparent"
+                                  }, undefined, false, undefined, this),
+                                  jsxDEV_7x81h0kn("div", {
+                                    className: "flex-1",
+                                    children: [
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "font-semibold",
+                                        children: file.name
+                                      }, undefined, false, undefined, this),
+                                      jsxDEV_7x81h0kn("p", {
+                                        className: "text-[11px] text-white/60",
+                                        children: file.reason
+                                      }, undefined, false, undefined, this)
+                                    ]
+                                  }, undefined, true, undefined, this),
+                                  jsxDEV_7x81h0kn("span", {
+                                    className: "text-xs text-white/60",
+                                    children: file.size_h
+                                  }, undefined, false, undefined, this)
+                                ]
+                              }, `${file.file}-delete-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                                className: "text-xs text-white/60",
+                                children: "Aucun fichier à supprimer."
+                              }, undefined, false, undefined, this)
+                            }, undefined, false, undefined, this)
+                          ]
+                        }, undefined, true, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    jsxDEV_7x81h0kn("button", {
+                      onClick: deleteSelected,
+                      disabled: selectedDeleteCount === 0,
+                      className: "btn-primary w-full",
+                      children: [
+                        "Supprimer les fichiers sélectionnés (",
+                        selectedDeleteCount,
+                        ")"
+                      ]
+                    }, undefined, true, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                jsxDEV_7x81h0kn("section", {
+                  className: "grid gap-4 md:grid-cols-2",
+                  children: [
+                    jsxDEV_7x81h0kn("div", {
+                      className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
                       children: [
                         jsxDEV_7x81h0kn("div", {
                           className: "flex items-center justify-between",
@@ -1054,7 +1008,7 @@ function App() {
                           ]
                         }, undefined, true, undefined, this),
                         stats ? jsxDEV_7x81h0kn("div", {
-                          className: "space-y-3 text-sm text-white/70",
+                          className: "space-y-2 text-sm text-white/70",
                           children: [
                             jsxDEV_7x81h0kn("div", {
                               className: "flex justify-between",
@@ -1099,22 +1053,7 @@ function App() {
                                   children: protectedFiles.length
                                 }, undefined, false, undefined, this)
                               ]
-                            }, undefined, true, undefined, this),
-                            stats.stats && Object.entries(stats.stats).map(([category, stat]) => jsxDEV_7x81h0kn("div", {
-                              className: "flex justify-between text-xs",
-                              children: [
-                                jsxDEV_7x81h0kn("span", {
-                                  children: category
-                                }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
-                                  children: [
-                                    stat.count,
-                                    " • ",
-                                    stat.size_h
-                                  ]
-                                }, undefined, true, undefined, this)
-                              ]
-                            }, category, true, undefined, this))
+                            }, undefined, true, undefined, this)
                           ]
                         }, undefined, true, undefined, this) : jsxDEV_7x81h0kn("p", {
                           className: "text-sm text-white/60",
@@ -1123,7 +1062,7 @@ function App() {
                       ]
                     }, undefined, true, undefined, this),
                     jsxDEV_7x81h0kn("div", {
-                      className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4",
+                      className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
                       children: [
                         jsxDEV_7x81h0kn("div", {
                           className: "flex items-center justify-between",
@@ -1179,7 +1118,7 @@ function App() {
                             }),
                             jsxDEV_7x81h0kn("button", {
                               onClick: quickDeleteByCategory,
-                              className: "w-full rounded-full bg-white/15 border border-white/20 py-2 text-sm font-semibold text-white",
+                              className: "btn-outline w-full",
                               children: "Supprimer les catégories cochées"
                             }, undefined, false, undefined, this)
                           ]
@@ -1194,23 +1133,25 @@ function App() {
               ]
             }, undefined, true, undefined, this),
             jsxDEV_7x81h0kn("aside", {
-              className: "rounded-3xl bg-white/5 border border-white/10 p-6 flex flex-col",
+              className: "rounded-3xl bg-white/5 border border-white/10 p-5 flex flex-col backdrop-blur",
               children: [
                 jsxDEV_7x81h0kn("div", {
-                  className: "flex items-center justify-between mb-4",
+                  className: "flex items-center justify-between mb-3",
                   children: [
                     jsxDEV_7x81h0kn("h3", {
                       className: "text-lg font-semibold",
                       children: "Logs en direct"
                     }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("span", {
-                      className: "text-xs text-white/50",
-                      children: logs.length
+                    jsxDEV_7x81h0kn("button", {
+                      className: "btn-ghost text-xs",
+                      onClick: () => setLogs([]),
+                      children: "Effacer"
                     }, undefined, false, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
                 jsxDEV_7x81h0kn("div", {
-                  className: "flex-1 rounded-2xl bg-[#070c1f] border border-white/10 p-4 overflow-y-auto font-mono text-xs leading-relaxed text-white/80 space-y-3",
+                  className: "flex-1 rounded-2xl border border-white/10 p-4 overflow-y-auto font-mono text-xs leading-relaxed text-white/80 space-y-3",
+                  style: { background: "#070c1f" },
                   children: [
                     logs.length === 0 && jsxDEV_7x81h0kn("p", {
                       className: "text-white/40",
@@ -1242,9 +1183,9 @@ function App() {
                     }, i, true, undefined, this))
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("div", {
+                jsxDEV_7x81h0kn("p", {
                   className: "mt-4 text-[11px] text-white/50",
-                  children: "Les journaux sont automatiquement rafraîchis depuis le backend via WebSocket."
+                  children: "Les journaux sont mis à jour automatiquement."
                 }, undefined, false, undefined, this)
               ]
             }, undefined, true, undefined, this)
