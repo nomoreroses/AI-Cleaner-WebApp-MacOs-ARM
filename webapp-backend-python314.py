@@ -432,13 +432,19 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 def _looks_like_screenshot(name: str) -> bool:
     normalized = _normalize(name)
+    tokens = _tokenize_normalized(normalized)
 
     for keyword in SCREENSHOT_LATIN:
         normalized_keyword = _normalize(keyword)
         if not normalized_keyword:
             continue
-        if normalized_keyword in normalized:
-            return True
+
+        if len(normalized_keyword) <= SHORT_KEYWORD_MAX_LEN:
+            if normalized_keyword in tokens:
+                return True
+        else:
+            if normalized_keyword in normalized:
+                return True
 
     folded_name = name.casefold()
     for keyword in SCREENSHOT_UNICODE:
@@ -540,11 +546,11 @@ def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
                 'reason': 'Archive older than 6 months with no protected keywords.'
             }
 
-    if ext in {'.txt', '.log'} and size < 4096 and age_days >= 30 and not preview:
+    if ext in {'.txt', '.log', '.rtf', '.md'} and size < 4096 and age_days >= 30 and not preview:
         return {
             'importance': 'low',
             'can_delete': True,
-            'reason': 'Tiny text/log file older than 30 days with no content preview.'
+            'reason': 'Tiny document/log file older than 30 days with no content preview.'
         }
 
     if ext in {'.zip'} and '(copie' in normalized_name and age_days >= 30:
