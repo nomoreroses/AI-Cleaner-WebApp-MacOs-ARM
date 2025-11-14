@@ -294,6 +294,9 @@ SCREENSHOT_UNICODE = [
     '截圖'
 ]
 
+SCREENSHOT_IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.heic', '.webp'}
+BASIC_SCREENSHOT_DUPLICATE_RE = re.compile(r'^\d+\s*\(\d+\)$')
+
 TEMPORARY_FILE_HINTS = ['tmp', 'temp', 'untitled', 'copy', 'copie', 'test', 'draft']
 ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.tar.gz'}
 CODE_ALWAYS_KEEP_EXTS = {
@@ -301,6 +304,8 @@ CODE_ALWAYS_KEEP_EXTS = {
     '.java', '.kt', '.swift', '.rb', '.php', '.go', '.rs', '.cs', '.sh', '.ps1',
     '.bash', '.zsh', '.pl', '.sql', '.scss', '.less', '.vue'
 }
+SMALL_DOC_EXTS = {'.txt', '.log', '.rtf', '.md', '.pages', '.docx'}
+SMALL_DOC_MAX_BYTES = 10 * 1024
 CODE_FOLDER_HINTS = ['src', 'code', 'project', 'projet', 'projets', 'dev', 'app', 'backend', 'frontend']
 CODE_FILENAME_HINTS = [
     'package.json', 'requirements.txt', 'pipfile', 'pyproject.toml',
@@ -434,6 +439,13 @@ def _looks_like_screenshot(name: str) -> bool:
     normalized = _normalize(name)
     tokens = _tokenize_normalized(normalized)
 
+    path_name = Path(name)
+    suffix = path_name.suffix.lower()
+    if suffix in SCREENSHOT_IMAGE_EXTS:
+        stem = path_name.stem.strip()
+        if BASIC_SCREENSHOT_DUPLICATE_RE.match(stem):
+            return True
+
     for keyword in SCREENSHOT_LATIN:
         normalized_keyword = _normalize(keyword)
         if not normalized_keyword:
@@ -546,11 +558,11 @@ def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
                 'reason': 'Archive older than 6 months with no protected keywords.'
             }
 
-    if ext in {'.txt', '.log', '.rtf', '.md'} and size < 4096 and age_days >= 30 and not preview:
+    if ext in SMALL_DOC_EXTS and size <= SMALL_DOC_MAX_BYTES and age_days >= 30 and not preview:
         return {
             'importance': 'low',
             'can_delete': True,
-            'reason': 'Tiny document/log file older than 30 days with no content preview.'
+            'reason': 'Tiny document/log file (<=10KB) older than 30 days with no preview.'
         }
 
     if ext in {'.zip'} and '(copie' in normalized_name and age_days >= 30:
@@ -617,6 +629,9 @@ def _extract_rtf_preview(path: str, max_chars: int = 600) -> Optional[str]:
 
     snippet = re.sub(r'{\\.*?}', ' ', snippet)
     snippet = re.sub(r'\\[a-zA-Z]+-?\d* ?', ' ', snippet)
+    snippet = snippet.strip()
+    if not snippet:
+        return None
     return _clean_preview_text(snippet, max_chars)
 
 
@@ -994,6 +1009,8 @@ def analyze_file(file_info, model="llama3:8b"):
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
+CRITICAL RULE: NEVER INVENT content, keywords (like 'Invoice'), or metadata not explicitly provided in the input. If you rely on a keyword for a high-importance verdict, you MUST quote the keyword you found.
+
 INPUT METADATA (use this when the preview gives little signal):
 - File name: {file_info['name']}
 - Extension: {file_info['ext']}
@@ -1016,6 +1033,7 @@ STRICT NON-NEGOTIABLE RULES (content outranks filenames):
 6. Only answer "importance":"unknown" when preview, metadata, folder context, AND filename all fail to provide direction. Lack of preview alone is not enough if metadata or naming already describes the purpose (e.g., screenshot, temp, invoice, booking, contract).
 7. Content > metadata > filename. When the preview is absent you still reason from metadata/folder neighbors instead of defaulting to unknown.
 8. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
+9. If the file is older than 30 days, smaller than 10 KB, has no textual preview, and its filename does not match any protected keyword or critical content hint (like "contract" or "invoice"), you MUST output importance="low" and can_delete=true.
 
 
 DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
