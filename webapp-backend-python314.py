@@ -16,6 +16,7 @@ import sys
 import unicodedata
 import zipfile
 from typing import Dict, List, Optional, Set, Tuple
+import subprocess
 
 try:
     from PyPDF2 import PdfReader
@@ -1135,25 +1136,97 @@ def favicon():
         return send_from_directory(str(STATIC_DIR), 'favicon.ico')
     return '', 204
 
+
+def _finder_choose_folder() -> Tuple[Optional[Path], Optional[str]]:
+    """Open a Finder choose-folder dialog on macOS."""
+
+    if sys.platform != 'darwin':
+        return None, 'unsupported'
+
+    script = r'''
+        try
+            set chosenFolder to choose folder with prompt "Choisis le dossier à scanner"
+            return POSIX path of chosenFolder
+        on error errMsg number errNum
+            if errNum is -128 then
+                return "USER_CANCELLED"
+            else
+                return "ERROR:" & errMsg
+            end if
+        end try
+    '''
+
+    try:
+        completed = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False
+        )
+    except FileNotFoundError:
+        return None, 'osascript_missing'
+    except subprocess.TimeoutExpired:
+        return None, 'timeout'
+
+    output = (completed.stdout or '').strip()
+
+    if output == 'USER_CANCELLED':
+        return None, 'cancelled'
+
+    if output.startswith('ERROR:'):
+        return None, output.split(':', 1)[1].strip() or 'Finder error'
+
+    if completed.returncode != 0:
+        err_text = (completed.stderr or output or 'Finder error').strip()
+        return None, err_text
+
+    if not output:
+        return None, 'cancelled'
+
+    return Path(output), None
+
 @app.route('/api/select_folder', methods=['POST'])
 def api_select_folder():
     """Sélectionner un dossier côté backend (fallback Downloads)."""
     data = request.get_json(silent=True) or {}
     requested = data.get('path')
+    target: Optional[Path] = None
+    warning: Optional[str] = None
 
     if requested:
         target = Path(requested).expanduser()
-    elif state['last_scan_path']:
-        target = Path(state['last_scan_path'])
     else:
-        downloads = Path.home() / 'Downloads'
-        target = downloads if downloads.exists() else Path.home()
+        chosen, dialog_error = _finder_choose_folder()
+        if chosen:
+            target = chosen
+        elif dialog_error == 'cancelled':
+            return jsonify({'ok': False, 'error': 'Sélection annulée dans Finder'}), 400
+        elif dialog_error in {'unsupported', 'osascript_missing', 'timeout'}:
+            if dialog_error == 'unsupported':
+                warning = 'Finder est uniquement disponible sur macOS. Utilisation du dernier dossier connu.'
+            elif dialog_error == 'osascript_missing':
+                warning = 'osascript est introuvable : utilisation du dernier dossier connu.'
+            else:
+                warning = 'Finder ne répond pas, utilisation du dernier dossier connu.'
+        elif dialog_error:
+            return jsonify({'ok': False, 'error': dialog_error}), 500
+
+    if target is None:
+        if state['last_scan_path']:
+            target = Path(state['last_scan_path'])
+        else:
+            downloads = Path.home() / 'Downloads'
+            target = downloads if downloads.exists() else Path.home()
 
     if not target.exists() or not target.is_dir():
         return jsonify({'ok': False, 'error': f'Dossier introuvable: {target}'}), 400
 
     state['last_scan_path'] = str(target)
-    return jsonify({'ok': True, 'path': str(target)})
+    payload = {'ok': True, 'path': str(target)}
+    if warning:
+        payload['warning'] = warning
+    return jsonify(payload)
 
 
 @app.route('/api/scan', methods=['POST'])

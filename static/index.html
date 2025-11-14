@@ -20,7 +20,7 @@
         .slide-in { animation: slideIn 0.3s ease-out; }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white">
+<body class="bg-slate-50 text-slate-900 min-h-screen antialiased">
     <div id="app"></div>
 
     <!-- React et ReactDOM AVANT Babel -->
@@ -126,7 +126,6 @@
             const [candidates, setCandidates] = useState(loadState('candidates', []));
             const [protectedFiles, setProtectedFiles] = useState(loadState('protectedFiles', []));
             const [logs, setLogs] = useState(loadState('logs', []));
-            const [manualPathInput, setManualPathInput] = useState(() => config.path || '');
             
             const abortController = useRef(null);
 
@@ -372,33 +371,26 @@
                 return value.length > max ? value.slice(0, max) + '…' : value;
             };
 
-            const selectFolder = async (pathOverride = null) => {
+            const selectFolder = async () => {
                 try {
                     const response = await apiFetch('/api/select_folder', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(pathOverride ? { path: pathOverride } : {})
+                        headers: { 'Content-Type': 'application/json' }
                     });
                     const data = await response.json();
 
                     if (data.ok && data.path) {
                         setConfig(prev => ({ ...prev, path: data.path }));
-                        setManualPathInput(data.path);
                         addLog(`📁 Dossier sélectionné: ${data.path}`);
+                        if (data.warning) {
+                            addLog({ message: `⚠️ ${data.warning}`, color: 'text-amber-300' });
+                        }
                     } else {
-                        addLog('❌ Erreur sélection dossier: ' + (data.error || 'Unknown error'));
+                        addLog('❌ Sélection dossier: ' + (data.error || 'Unknown error'));
                     }
                 } catch (error) {
-                    addLog('❌ Erreur sélection dossier: ' + error.message);
+                    addLog('❌ Sélection dossier: ' + error.message);
                 }
-            };
-
-            const verifyManualPath = async () => {
-                if (!manualPathInput || manualPathInput.trim().length === 0) {
-                    addLog('⚠️ Enter a folder path first');
-                    return;
-                }
-                await selectFolder(manualPathInput.trim());
             };
 
             const startScan = async () => {
@@ -635,111 +627,103 @@
             };
 
             return (
-                <div className="p-6">
+                <div className="max-w-6xl mx-auto py-10 px-4 space-y-10">
                     {/* Header */}
-                    <div className="mb-6">
-                        <h1 className="text-4xl font-bold mb-2">🤖 AI Cleaner v3.0</h1>
-                        <p className="text-gray-300">Nettoyage intelligent avec IA locale</p>
+                    <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-[0.35em] text-slate-400">AI Cleaner</p>
+                        <div>
+                            <h1 className="text-4xl font-semibold text-slate-900">🤖 AI Cleaner v3.0</h1>
+                            <p className="text-base text-slate-500 mt-1">Une interface plus douce pour piloter ton nettoyage intelligent.</p>
+                        </div>
                     </div>
 
                     {/* Layout 3 colonnes */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Colonne 1: Options & Scan */}
                         <div className="space-y-6">
                             {/* Configuration */}
-                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold mb-4">⚙️ Options</h2>
+                            <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                <h2 className="text-2xl font-semibold text-slate-900 mb-6">⚙️ Options</h2>
                                 
                                 {/* Sélecteur de dossier */}
-                                <div className="space-y-3">
-                                    <label className="block text-sm">Folder to scan</label>
-                                    <div className="flex flex-col sm:flex-row gap-2">
-                                        <input
-                                            type="text"
-                                            value={manualPathInput}
-                                            onChange={(e) => setManualPathInput(e.target.value)}
-                                            placeholder="/Users/you/Downloads"
-                                            className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
-                                        />
-                                        <button
-                                            onClick={verifyManualPath}
-                                            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"
-                                        >
-                                            ✅ Validate path
-                                        </button>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <p className="text-sm font-medium text-slate-800">Dossier à analyser</p>
+                                        <p className="text-xs text-slate-500">Ouvre Finder pour choisir le dossier à nettoyer.</p>
                                     </div>
-                                    <button
-                                        onClick={() => selectFolder()}
-                                        className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition text-sm"
-                                    >
-                                        📂 Use Downloads/default
-                                    </button>
-                                    {config.path && (
-                                        <div className="text-xs text-gray-300 bg-black/20 p-2 rounded break-all">
-                                            {config.path}
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                        <button
+                                            type="button"
+                                            onClick={selectFolder}
+                                            className="inline-flex items-center justify-center rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                                        >
+                                            📂 Choisir un dossier
+                                        </button>
+                                        <div className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 break-all">
+                                            {config.path || 'Aucun dossier sélectionné'}
                                         </div>
-                                    )}
-
+                                    </div>
+                                
                                     <div>
-                                        <label className="block text-sm mb-2">Types de fichiers à scanner</label>
+                                        <p className="text-sm font-medium text-slate-800 mb-2">Types de fichiers à scanner</p>
                                         <div className="grid grid-cols-2 gap-2">
                                             {FILE_TYPE_OPTIONS.map(option => (
                                                 <button
                                                     key={option.key}
                                                     type="button"
                                                     onClick={() => toggleFileType(option.key)}
-                                                    className={`text-xs px-2 py-2 rounded-lg border transition ${
+                                                    className={`text-xs px-3 py-2 rounded-full border transition-all duration-200 ${
                                                         activeFileTypes[option.key]
-                                                            ? 'bg-green-600/60 border-green-400 text-white'
-                                                            : 'bg-black/30 border-white/10 text-gray-300'
+                                                            ? 'bg-sky-50 text-sky-700 border-sky-200 shadow-sm'
+                                                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                                                     }`}
                                                 >
                                                     {option.emoji} {option.label}
                                                 </button>
                                             ))}
                                         </div>
-                                        <p className="text-[11px] text-gray-400 mt-2">Seuls les types cochés seront analysés.</p>
+                                        <p className="text-[11px] text-slate-500 mt-2">Seuls les types cochés seront analysés.</p>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm mb-1">Fichiers max à analyser</label>
+                                        <label className="block text-sm font-medium text-slate-800 mb-1">Fichiers max à analyser</label>
                                         <input
                                             type="number"
                                             min="1"
                                             value={config.max_files}
                                             onChange={(e) => setConfig({...config, max_files: Math.max(1, parseInt(e.target.value) || 1)})}
-                                            className="w-full bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
+                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm mb-1">AI model (Ollama)</label>
+                                        <label className="block text-sm font-medium text-slate-800 mb-1">Modèle IA (Ollama)</label>
                                         <div className="flex flex-col sm:flex-row gap-2">
                                             <input
                                                 type="text"
                                                 value={config.model}
                                                 onChange={(e) => setConfig({...config, model: e.target.value})}
-                                                className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2 text-sm"
+                                                className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
                                             />
                                             <button
                                                 type="button"
                                                 onClick={checkAiStatus}
-                                                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition text-sm"
+                                                className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-sky-400 hover:text-sky-600"
                                             >
-                                                🔎 Check AI setup
+                                                🔎 Vérifier l'IA
                                             </button>
                                         </div>
-                                        <p className="text-[11px] text-gray-400 mt-1">Assure-toi que ce modèle est installé via `ollama pull`.</p>
+                                        <p className="text-[11px] text-slate-500 mt-1">Assure-toi que ce modèle est installé via `ollama pull`.</p>
                                     </div>
 
                                 </div>
 
                                 {/* Actions */}
-                                <div className="mt-4 space-y-2">
+                                <div className="mt-6 space-y-3">
                                     <button
                                         onClick={startScan}
                                         disabled={status === 'scanning' || !config.path}
-                                        className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                        className="w-full inline-flex items-center justify-center rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-300"
                                     >
                                         🔍 Scanner
                                     </button>
@@ -747,23 +731,23 @@
                                     <button
                                         onClick={startAnalyze}
                                         disabled={status === 'analyzing' || !candidates || candidates.length === 0}
-                                        className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                        className="w-full inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-400 hover:text-sky-600 disabled:cursor-not-allowed disabled:text-slate-400"
                                     >
                                         🧠 Analyser avec IA
                                     </button>
 
                                     {(status === 'scanning' || status === 'analyzing') && (
-                                        <button 
+                                        <button
                                             onClick={stopProcess}
-                                            className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                            className="w-full inline-flex items-center justify-center rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300"
                                         >
                                             ⏹️ Stop
                                         </button>
                                     )}
 
-                                    <button 
+                                    <button
                                         onClick={restartProcess}
-                                        className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                        className="w-full inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
                                     >
                                         🔄 Restart
                                     </button>
@@ -772,33 +756,33 @@
 
                             {/* Stats */}
                             {stats && (
-                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                    <h2 className="text-xl font-bold mb-3">📊 Statistiques</h2>
-                                    <div className="space-y-2 text-sm">
+                                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                    <h2 className="text-2xl font-semibold text-slate-900 mb-4">📊 Statistiques</h2>
+                                    <div className="space-y-3 text-sm text-slate-600">
                                         <div className="flex justify-between">
-                                            <span>Total scannés:</span>
-                                            <span className="font-bold">{stats.total_files || 0}</span>
+                                            <span>Total scannés</span>
+                                            <span className="font-semibold text-slate-900">{stats.total_files || 0}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span>Candidats IA:</span>
-                                            <span className="font-bold">{stats.candidate_count ?? candidates.length}</span>
+                                            <span>Candidats IA</span>
+                                            <span className="font-semibold text-slate-900">{stats.candidate_count ?? candidates.length}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span>Analyser (limite):</span>
-                                            <span className="font-bold">{Math.min(candidates.length, config.max_files)}</span>
+                                            <span>Analyser (limite)</span>
+                                            <span className="font-semibold text-slate-900">{Math.min(candidates.length, config.max_files)}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span>Protégés détectés:</span>
-                                            <span className="font-bold text-red-300">{protectedFiles.length}</span>
+                                            <span>Protégés détectés</span>
+                                            <span className="font-semibold text-rose-500">{protectedFiles.length}</span>
                                         </div>
                                         {stats.selected_categories && (
-                                            <div className="text-xs text-gray-400">
+                                            <div className="text-xs text-slate-400">
                                                 Filtres: {stats.selected_categories.join(', ')}
                                             </div>
                                         )}
                                         {stats.stats && Object.entries(stats.stats).map(([category, stat]) => (
-                                            <div key={category} className="flex justify-between">
-                                                <span>{category}:</span>
+                                            <div key={category} className="flex justify-between text-xs text-slate-500">
+                                                <span>{category}</span>
                                                 <span>{stat.count} fichiers ({stat.size_h})</span>
                                             </div>
                                         ))}
@@ -810,72 +794,72 @@
                         {/* Colonne 2: Résultats & Actions */}
                         <div className="space-y-6">
                             {/* Candidats IA */}
-                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold mb-3">🗂️ Fichiers prêts pour l'IA</h2>
+                            <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                <h2 className="text-2xl font-semibold text-slate-900 mb-4">🗂️ Fichiers prêts pour l'IA</h2>
                                 {candidates && candidates.length > 0 ? (
                                     <div>
-                                        <p className="text-xs text-gray-400 mb-3">{candidates.length} fichiers correspondent aux filtres sélectionnés.</p>
-                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                        <p className="text-xs text-slate-500 mb-4">{candidates.length} fichiers correspondent aux filtres sélectionnés.</p>
+                                        <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                                             {candidates.slice(0, 8).map((file, idx) => (
-                                                <div key={`${file.file}-${idx}`} className="p-3 bg-black/30 rounded-lg border border-white/10">
-                                                    <div className="flex justify-between text-sm">
+                                                <div key={`${file.file}-${idx}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                                                    <div className="flex justify-between text-sm text-slate-800">
                                                         <span className="font-semibold truncate pr-3">{file.name}</span>
-                                                        <span className="text-gray-400">{file.category}</span>
+                                                        <span className="text-slate-400">{file.category}</span>
                                                     </div>
-                                                    <div className="text-xs text-gray-400 mt-1">{file.size_h} • {file.age_days}j</div>
+                                                    <div className="text-xs text-slate-500 mt-1">{file.size_h} • {file.age_days}j</div>
                                                 </div>
                                             ))}
                                         </div>
                                         {candidates.length > 8 && (
-                                            <p className="text-xs text-gray-400 mt-2 text-center">
+                                            <p className="text-xs text-slate-500 mt-3 text-center">
                                                 ... et {candidates.length - 8} autres fichiers
                                             </p>
                                         )}
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-400">Lance un scan pour voir les fichiers analysables.</p>
+                                    <p className="text-sm text-slate-500">Lance un scan pour voir les fichiers analysables.</p>
                                 )}
                             </div>
 
                             {/* Fichiers protégés */}
-                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold mb-3">🛡️ Fichiers protégés détectés</h2>
+                            <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                <h2 className="text-2xl font-semibold text-slate-900 mb-4">🛡️ Fichiers protégés détectés</h2>
                                 {protectedFiles && protectedFiles.length > 0 ? (
                                     <div>
-                                        <p className="text-xs text-gray-400 mb-3">{protectedFiles.length} fichiers contiennent des mots-clés sensibles.</p>
-                                        <div className="space-y-2 max-h-72 overflow-y-auto">
+                                        <p className="text-xs text-slate-500 mb-4">{protectedFiles.length} fichiers contiennent des mots-clés sensibles.</p>
+                                        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                                             {protectedFiles.map((file, idx) => (
-                                                <div key={`${file.file || file.name}-protected-${idx}`} className="p-3 bg-black/30 rounded-lg border border-red-500/30">
-                                                    <div className="flex justify-between text-sm text-red-300">
+                                                <div key={`${file.file || file.name}-protected-${idx}`} className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                                                    <div className="flex justify-between text-sm text-rose-700">
                                                         <span className="font-semibold truncate pr-3">{file.name}</span>
                                                         <span className="text-xs uppercase">{file.keyword}</span>
                                                     </div>
-                                                    <div className="text-xs text-gray-400 mt-1">{file.size_h} • {file.age_days}j • {file.category}</div>
+                                                    <div className="text-xs text-rose-600 mt-1">{file.size_h} • {file.age_days}j • {file.category}</div>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-400">Aucun document sensible détecté lors du dernier scan.</p>
+                                    <p className="text-sm text-slate-500">Aucun document sensible détecté lors du dernier scan.</p>
                                 )}
                             </div>
 
                             {/* Suppression rapide */}
-                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold mb-4">⚡ Suppression Rapide</h2>
+                            <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                <h2 className="text-2xl font-semibold text-slate-900 mb-4">⚡ Suppression Rapide</h2>
 
                                 {stats && stats.stats ? (
                                     <div>
-                                        <p className="text-xs text-gray-400 mb-3">Coche les catégories à supprimer directement :</p>
-                                        
+                                        <p className="text-xs text-slate-500 mb-4">Coche les catégories à supprimer directement :</p>
+
                                         <div className="space-y-2">
                                             {Object.keys(quickDeleteCategories).map(category => {
                                                 const categoryStats = stats.stats[category];
                                                 if (!categoryStats || categoryStats.count === 0) return null;
                                                 
                                                 return (
-                                                    <label key={category} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-2 rounded">
-                                                        <input 
+                                                    <label key={category} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm text-slate-700 cursor-pointer transition hover:border-slate-200">
+                                                        <input
                                                             type="checkbox"
                                                             checked={quickDeleteCategories[category]}
                                                             onChange={(e) => setQuickDeleteCategories({
@@ -884,37 +868,37 @@
                                                             })}
                                                             className="w-4 h-4"
                                                         />
-                                                        <span className="flex-1 text-sm">
+                                                        <span className="flex-1">
                                                             {category} ({categoryStats.count} - {categoryStats.size_h})
                                                         </span>
                                                     </label>
                                                 );
                                             })}
                                         </div>
-                                        
-                                        <button 
+
+                                        <button
                                             onClick={quickDeleteByCategory}
-                                            className="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                            className="w-full mt-4 inline-flex items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400"
                                         >
                                             🗑️ Supprimer les catégories cochées
                                         </button>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-400">Lance un scan pour voir les catégories</p>
+                                    <p className="text-sm text-slate-500">Lance un scan pour voir les catégories</p>
                                 )}
                             </div>
 
                             {/* Progress Scan */}
                             {status === 'scanning' && (
-                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
-                                    <h2 className="text-xl font-bold mb-4">🔍 Scan en cours</h2>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-sm">
+                                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6 slide-in">
+                                    <h2 className="text-2xl font-semibold text-slate-900 mb-4">🔍 Scan en cours</h2>
+                                    <div className="space-y-3 text-sm text-slate-600">
+                                        <div className="flex justify-between">
                                             <span>{scanProgress.message}</span>
                                             <span>{scanProgress.scanned} fichiers</span>
                                         </div>
-                                        <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                                            <div className="bg-blue-500 h-full rounded-full thinking" style={{width: '100%'}}></div>
+                                        <div className="w-full rounded-full bg-slate-200 h-3 overflow-hidden">
+                                            <div className="bg-sky-500 h-full rounded-full thinking" style={{width: '100%'}}></div>
                                         </div>
                                     </div>
                                 </div>
@@ -922,30 +906,30 @@
 
                             {/* Progress Analyse */}
                             {status === 'analyzing' && (
-                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
-                                    <h2 className="text-xl font-bold mb-4">🧠 Analyse IA</h2>
+                                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6 slide-in">
+                                    <h2 className="text-2xl font-semibold text-slate-900 mb-4">🧠 Analyse IA</h2>
                                     <div className="space-y-4">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-sm">
+                                        <div className="space-y-2 text-sm text-slate-600">
+                                            <div className="flex justify-between">
                                                 <span>Progression</span>
                                                 <span>{analyzeProgress.current} / {analyzeProgress.total}</span>
                                             </div>
-                                            <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                                                <div 
-                                                    className="bg-purple-500 h-full rounded-full transition-all duration-300" 
-                                                    style={{width: `${(analyzeProgress.current / analyzeProgress.total) * 100}%`}}
+                                            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                                                <div
+                                                    className="bg-sky-500 h-full rounded-full transition-all duration-300"
+                                                    style={{width: `${(analyzeProgress.current / analyzeProgress.total) * 100 || 0}%`}}
                                                 ></div>
                                             </div>
                                         </div>
 
-                                        <div className="text-xs text-gray-300 truncate">
+                                        <div className="text-xs text-slate-500 truncate">
                                             {analyzeProgress.file}
                                         </div>
                                         {aiThinking && (
-                                            <div className="text-xs text-purple-200 bg-purple-900/20 p-3 rounded-lg thinking">
-                                                <div className="font-semibold mb-1">Analyzing {aiThinking.file}</div>
+                                            <div className="text-xs text-slate-600 bg-slate-100 border border-slate-200 p-3 rounded-2xl thinking">
+                                                <div className="font-semibold mb-1">Analyse de {aiThinking.file}</div>
                                                 {aiThinking.prompt && (
-                                                    <div className="text-[11px] text-gray-300">Prompt: {truncate(aiThinking.prompt, 200)}</div>
+                                                    <div className="text-[11px] text-slate-500">Prompt: {truncate(aiThinking.prompt, 200)}</div>
                                                 )}
                                             </div>
                                         )}
@@ -955,48 +939,48 @@
 
                             {/* Résultats Analyse */}
                             {status === 'complete' && (
-                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 slide-in">
-                                    <div className="grid grid-cols-3 gap-4 mb-4 text-center">
-                                        <div className="bg-green-500/20 p-3 rounded-lg">
-                                            <div className="text-2xl font-bold text-green-400">{results.can_delete.length}</div>
-                                            <div className="text-xs">À supprimer</div>
+                                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6 slide-in">
+                                    <div className="grid grid-cols-3 gap-4 mb-6 text-center text-sm text-slate-600">
+                                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                                            <div className="text-2xl font-semibold text-emerald-600">{results.can_delete.length}</div>
+                                            <div>À supprimer</div>
                                         </div>
-                                        <div className="bg-blue-500/20 p-3 rounded-lg">
-                                            <div className="text-2xl font-bold text-blue-400">{results.should_keep.length}</div>
-                                            <div className="text-xs">À conserver</div>
+                                        <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+                                            <div className="text-2xl font-semibold text-sky-600">{results.should_keep.length}</div>
+                                            <div>À conserver</div>
                                         </div>
-                                        <div className="bg-yellow-500/20 p-3 rounded-lg">
-                                            <div className="text-2xl font-bold text-yellow-400">{results.need_review.length}</div>
-                                            <div className="text-xs">À réviser</div>
+                                        <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3">
+                                            <div className="text-2xl font-semibold text-amber-600">{results.need_review.length}</div>
+                                            <div>À réviser</div>
                                         </div>
                                     </div>
-                                    
+
                                     {results.can_delete.length > 0 && (
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-lg font-bold">🟢 Suppression ({results.can_delete.length})</h3>
-                                            <button 
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-slate-900">🟢 Suppression ({results.can_delete.length})</h3>
+                                            <button
                                                 onClick={deleteSelected}
-                                                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition text-sm"
+                                                className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-500"
                                             >
                                                 🗑️ Tout supprimer
                                             </button>
                                         </div>
                                     )}
-                                    
-                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+
+                                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                                         {results.can_delete.slice(0, 10).map((r, i) => (
-                                            <div key={i} className="p-3 bg-black/30 rounded-lg border border-green-500/20">
-                                                <div className="font-bold text-green-400 text-sm truncate">{r.name}</div>
-                                                <div className="text-xs text-gray-300 mt-1">
-                                                    {r.size_h} | {r.age_days}j | {r.category}
+                                            <div key={i} className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                                                <div className="font-semibold text-emerald-700 text-sm truncate">{r.name}</div>
+                                                <div className="text-xs text-emerald-600 mt-1">
+                                                    {r.size_h} • {r.age_days}j • {r.category}
                                                 </div>
-                                                <div className="text-xs text-gray-400 mt-2">
+                                                <div className="text-xs text-slate-500 mt-2">
                                                     💡 {r.reason}
                                                 </div>
                                             </div>
                                         ))}
                                         {results.can_delete.length > 10 && (
-                                            <div className="text-center text-xs text-gray-400">
+                                            <div className="text-center text-xs text-slate-500">
                                                 ... et {results.can_delete.length - 10} autres fichiers
                                             </div>
                                         )}
@@ -1007,16 +991,16 @@
 
                         {/* Colonne 3: Logs */}
                         <div className="space-y-6">
-                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                                <h2 className="text-xl font-bold mb-4">📜 Logs</h2>
-                                <div className="bg-black/40 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-xs">
+                            <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_25px_60px_rgba(15,23,42,0.05)] p-6">
+                                <h2 className="text-2xl font-semibold text-slate-900 mb-4">📜 Logs</h2>
+                                <div className="rounded-2xl border border-slate-100 bg-slate-950/90 text-slate-100 p-4 h-[600px] overflow-y-auto font-mono text-xs leading-relaxed">
                                     {logs.map((log, i) => (
-                                        <div key={i} className="mb-2 slide-in">
-                                            <div className={log.color || 'text-white'}>
-                                                <span className="text-gray-500">[{log.time}]</span> {log.message}
+                                        <div key={i} className="mb-3 slide-in">
+                                            <div className={log.color || 'text-slate-100'}>
+                                                <span className="text-slate-500">[{log.time}]</span> {log.message}
                                             </div>
                                             {log.detail && (
-                                                <div className="text-xs text-gray-400 ml-12 mt-1">
+                                                <div className="text-[11px] text-slate-400 ml-10 mt-1">
                                                     💡 {log.detail}
                                                 </div>
                                             )}
