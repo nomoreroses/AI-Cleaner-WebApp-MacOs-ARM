@@ -1,4 +1,16 @@
 const { useState, useEffect, useRef } = React;
+
+const _jsxDEV = (type, config, maybeKey, ...rest) => {
+  let props = config == null ? config : { ...config };
+  if (maybeKey !== undefined && maybeKey !== null) {
+    if (props == null) {
+      props = { key: maybeKey };
+    } else {
+      props = { ...props, key: maybeKey };
+    }
+  }
+  return React.createElement(type, props);
+};
 const inferApiBase = () => {
   const origin = window.location.origin;
   if (origin && origin.startsWith("http")) {
@@ -518,45 +530,45 @@ function App() {
       [file]: checked
     }));
   };
-  return jsxDEV_7x81h0kn("div", {
+  return _jsxDEV("div", {
     className: "min-h-screen text-white",
     style: { background: "radial-gradient(circle at 0% 0%, rgba(57,84,222,0.3), transparent 60%), #050a19" },
-    children: jsxDEV_7x81h0kn("div", {
+    children: _jsxDEV("div", {
       className: "max-w-7xl mx-auto px-4 py-8 space-y-6",
       children: [
-        jsxDEV_7x81h0kn("header", {
+        _jsxDEV("header", {
           className: "space-y-2",
           children: [
-            jsxDEV_7x81h0kn("p", {
+            _jsxDEV("p", {
               className: "text-xs uppercase tracking-[0.3em] text-white/50",
               children: "AI Cleaner"
             }, undefined, false, undefined, this),
-            jsxDEV_7x81h0kn("div", {
+            _jsxDEV("div", {
               className: "flex flex-wrap items-end justify-between gap-4",
               children: [
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   children: [
-                    jsxDEV_7x81h0kn("h1", {
+                    _jsxDEV("h1", {
                       className: "text-4xl font-semibold tracking-tight",
                       children: "AI Cleaner v3.0"
                     }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("p", {
+                    _jsxDEV("p", {
                       className: "text-sm text-white/70",
                       children: "Nettoyage assisté par IA dans une seule vue lisible."
                     }, undefined, false, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   style: { textAlign: "right" },
                   className: "text-xs text-white/60 space-y-1",
                   children: [
-                    jsxDEV_7x81h0kn("p", {
+                    _jsxDEV("p", {
                       children: [
                         candidates.length,
                         " fichiers candidats"
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("p", {
+                    _jsxDEV("p", {
                       children: [
                         selectedDeleteCount,
                         " prêts à supprimer"
@@ -568,70 +580,70 @@ function App() {
             }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
-        jsxDEV_7x81h0kn("div", {
+        _jsxDEV("div", {
           className: "grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)360px]",
           children: [
-            jsxDEV_7x81h0kn("aside", {
+            _jsxDEV("aside", {
               className: "space-y-5",
               children: [
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
                   children: [
                     { label: "Overview", icon: "\uD83D\uDCE6", value: overviewSizeLabel },
                     { label: "Scan Folder", icon: "\uD83D\uDDC2️", value: scanStatusLabel },
                     { label: "AI Analysis", icon: "\uD83E\uDDE0", value: aiStatusLabel }
-                  ].map((item) => jsxDEV_7x81h0kn("div", {
+                  ].map((item) => _jsxDEV("div", {
                     className: "flex items-center justify-between rounded-2xl px-3 py-2 bg-white/5 border border-white/10",
                     children: [
-                      jsxDEV_7x81h0kn("div", {
+                      _jsxDEV("div", {
                         className: "flex items-center gap-3",
                         children: [
-                          jsxDEV_7x81h0kn("span", {
+                          _jsxDEV("span", {
                             className: "text-lg",
                             children: item.icon
                           }, undefined, false, undefined, this),
-                          jsxDEV_7x81h0kn("span", {
+                          _jsxDEV("span", {
                             className: "text-sm font-medium",
                             children: item.label
                           }, undefined, false, undefined, this)
                         ]
                       }, undefined, true, undefined, this),
-                      jsxDEV_7x81h0kn("span", {
+                      _jsxDEV("span", {
                         className: "text-xs text-white/60",
                         children: item.value
                       }, undefined, false, undefined, this)
                     ]
                   }, item.label, true, undefined, this))
                 }, undefined, false, undefined, this),
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex items-center justify-between",
                       children: [
-                        jsxDEV_7x81h0kn("p", {
+                        _jsxDEV("p", {
                           className: "text-sm font-semibold",
                           children: "Dossier"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           className: "text-xs text-white/50",
                           children: config.path ? "Sélectionné" : "Aucun"
                         }, undefined, false, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "rounded-2xl bg-white/10 border border-white/10 px-3 py-2 text-sm truncate",
                       children: config.path || "Choisis un dossier dans Finder"
                     }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex gap-3",
                       children: [
-                        jsxDEV_7x81h0kn("button", {
+                        _jsxDEV("button", {
                           onClick: selectFolder,
                           className: "btn-primary flex-1",
                           children: "Choisir…"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("button", {
+                        _jsxDEV("button", {
                           onClick: restartProcess,
                           className: "btn-ghost",
                           children: "Reset"
@@ -640,17 +652,17 @@ function App() {
                     }, undefined, true, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-4 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex items-center justify-between",
                       children: [
-                        jsxDEV_7x81h0kn("p", {
+                        _jsxDEV("p", {
                           className: "text-sm font-semibold",
                           children: "Types analysés"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           className: "text-xs text-white/60",
                           children: [
                             activeFileTypeCount,
@@ -659,25 +671,25 @@ function App() {
                         }, undefined, true, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "grid grid-cols-2 gap-3",
                       children: FILE_TYPE_OPTIONS.map((option) => {
                         const isActive = !!activeFileTypes[option.key];
-                        return jsxDEV_7x81h0kn("button", {
+                        return _jsxDEV("button", {
                           onClick: () => toggleFileType(option.key),
                           className: `flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${isActive ? "bg-white text-slate-900 border-white/80 shadow-lg" : "bg-white/5 border-white/20 text-white/70"}`,
                           children: [
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               className: "text-lg",
                               children: option.emoji
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
+                            _jsxDEV("div", {
                               children: [
-                                jsxDEV_7x81h0kn("p", {
+                                _jsxDEV("p", {
                                   className: "text-sm font-semibold",
                                   children: option.label
                                 }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("p", {
+                                _jsxDEV("p", {
                                   className: "text-[11px] uppercase tracking-[0.2em] text-white/60",
                                   children: option.category
                                 }, undefined, false, undefined, this)
@@ -687,16 +699,16 @@ function App() {
                         }, option.key, true, undefined, this);
                       })
                     }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "grid grid-cols-2 gap-3 text-xs text-white/70",
                       children: [
-                        jsxDEV_7x81h0kn("label", {
+                        _jsxDEV("label", {
                           className: "space-y-1",
                           children: [
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               children: "Âge min (jours)"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("input", {
+                            _jsxDEV("input", {
                               type: "number",
                               min: "0",
                               value: config.min_age_days,
@@ -705,13 +717,13 @@ function App() {
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("label", {
+                        _jsxDEV("label", {
                           className: "space-y-1",
                           children: [
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               children: "Taille min (MB)"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("input", {
+                            _jsxDEV("input", {
                               type: "number",
                               min: "0",
                               value: config.min_size_mb,
@@ -726,47 +738,47 @@ function App() {
                 }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this),
-            jsxDEV_7x81h0kn("main", {
+            _jsxDEV("main", {
               className: "space-y-5",
               children: [
-                jsxDEV_7x81h0kn("section", {
+                _jsxDEV("section", {
                   className: "rounded-3xl border border-white/15 bg-white/5 p-5 space-y-4 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex flex-wrap items-center justify-between gap-4",
                       children: [
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           children: [
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-xs uppercase tracking-[0.2em] text-white/60",
                               children: "Contrôle"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-lg font-semibold",
                               children: "Scan & Analyse des fichiers"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-sm text-white/60",
                               children: config.path ? "Prêt à scanner" : "Sélectionne un dossier pour commencer"
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "flex flex-wrap gap-2",
                           children: [
-                            jsxDEV_7x81h0kn("button", {
+                            _jsxDEV("button", {
                               onClick: startScan,
                               disabled: !config.path || status === "scanning",
                               className: "btn-primary",
                               children: "▶ Scan"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("button", {
+                            _jsxDEV("button", {
                               onClick: stopProcess,
                               disabled: status === "idle",
                               className: "btn-outline",
                               children: "⏸ Stop"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("button", {
+                            _jsxDEV("button", {
                               onClick: startAnalyze,
                               disabled: status === "analyzing" || candidates.length === 0,
                               className: "btn-outline",
@@ -776,53 +788,53 @@ function App() {
                         }, undefined, true, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex flex-wrap items-center gap-3 text-xs text-white/60",
                       children: [
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           children: scanProgress.message || "Attente de scan"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           children: "•"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           children: analyzeProgress.total ? `${analyzeProgress.current}/${analyzeProgress.total} analysés` : "Analyse non démarrée"
                         }, undefined, false, undefined, this)
                       ]
                     }, undefined, true, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                (status === "scanning" || status === "analyzing" || aiThinking) && jsxDEV_7x81h0kn("section", {
+                (status === "scanning" || status === "analyzing" || aiThinking) && _jsxDEV("section", {
                   className: "rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex items-center justify-between text-xs text-white/70",
                       children: [
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           children: status === "scanning" ? scanProgress.message || "Scan en cours" : "Analyse IA en cours"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           children: status === "scanning" ? `${scanProgress.scanned} fichiers` : `${analyzeProgress.current}/${analyzeProgress.total || 0}`
                         }, undefined, false, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "w-full bg-white/10 rounded-full h-2 overflow-hidden",
-                      children: jsxDEV_7x81h0kn("div", {
+                      children: _jsxDEV("div", {
                         className: "h-full rounded-full bg-white",
                         style: { width: status === "scanning" ? "100%" : `${analyzeProgress.current / (analyzeProgress.total || 1) * 100}%` }
                       }, undefined, false, undefined, this)
                     }, undefined, false, undefined, this),
-                    aiThinking && jsxDEV_7x81h0kn("div", {
+                    aiThinking && _jsxDEV("div", {
                       className: "text-xs text-white/80 font-mono thinking space-y-1",
                       children: [
-                        jsxDEV_7x81h0kn("p", {
+                        _jsxDEV("p", {
                           children: [
                             "Analyse: ",
                             aiThinking.file
                           ]
                         }, undefined, true, undefined, this),
-                        aiThinking.prompt && jsxDEV_7x81h0kn("p", {
+                        aiThinking.prompt && _jsxDEV("p", {
                           className: "text-white/60",
                           children: [
                             "Prompt: ",
@@ -833,17 +845,17 @@ function App() {
                     }, undefined, true, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("section", {
+                _jsxDEV("section", {
                   className: "rounded-3xl border border-white/10 bg-white/5 p-5 space-y-4 backdrop-blur",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "flex items-center justify-between",
                       children: [
-                        jsxDEV_7x81h0kn("h3", {
+                        _jsxDEV("h3", {
                           className: "text-lg font-semibold",
                           children: "Résultats IA"
                         }, undefined, false, undefined, this),
-                        jsxDEV_7x81h0kn("span", {
+                        _jsxDEV("span", {
                           className: "text-xs text-white/60",
                           children: [
                             selectedDeleteCount,
@@ -852,32 +864,32 @@ function App() {
                         }, undefined, true, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "grid gap-4 md:grid-cols-3",
                       children: [
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "rounded-2xl bg-white/5 border border-white/10 p-4",
                           children: [
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-xs uppercase tracking-[0.25em] text-white/60",
                               children: "Protégés"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("ul", {
+                            _jsxDEV("ul", {
                               className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                              children: protectedFiles.length > 0 ? protectedFiles.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                              children: protectedFiles.length > 0 ? protectedFiles.map((file, idx) => _jsxDEV("li", {
                                 className: "flex items-start gap-3 text-sm",
                                 children: [
-                                  jsxDEV_7x81h0kn("span", {
+                                  _jsxDEV("span", {
                                     className: "text-rose-200",
                                     children: "⚑"
                                   }, undefined, false, undefined, this),
-                                  jsxDEV_7x81h0kn("div", {
+                                  _jsxDEV("div", {
                                     children: [
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "font-semibold",
                                         children: file.name
                                       }, undefined, false, undefined, this),
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "text-[11px] text-white/60",
                                         children: [
                                           file.keyword,
@@ -888,86 +900,86 @@ function App() {
                                     ]
                                   }, undefined, true, undefined, this)
                                 ]
-                              }, `${file.file}-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                              }, `${file.file}-${idx}`, true, undefined, this)) : _jsxDEV("p", {
                                 className: "text-xs text-white/60",
                                 children: "Aucun fichier sensible."
                               }, undefined, false, undefined, this)
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "rounded-2xl bg-white/5 border border-white/10 p-4",
                           children: [
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-xs uppercase tracking-[0.25em] text-white/60",
                               children: "Conservés"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("ul", {
+                            _jsxDEV("ul", {
                               className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                              children: results.should_keep.length > 0 ? results.should_keep.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                              children: results.should_keep.length > 0 ? results.should_keep.map((file, idx) => _jsxDEV("li", {
                                 className: "flex items-start gap-3 text-sm",
                                 children: [
-                                  jsxDEV_7x81h0kn("span", {
+                                  _jsxDEV("span", {
                                     className: "text-emerald-200",
                                     children: "•"
                                   }, undefined, false, undefined, this),
-                                  jsxDEV_7x81h0kn("div", {
+                                  _jsxDEV("div", {
                                     children: [
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "font-semibold",
                                         children: file.name
                                       }, undefined, false, undefined, this),
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "text-[11px] text-white/60",
                                         children: file.reason
                                       }, undefined, false, undefined, this)
                                     ]
                                   }, undefined, true, undefined, this)
                                 ]
-                              }, `${file.file}-keep-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                              }, `${file.file}-keep-${idx}`, true, undefined, this)) : _jsxDEV("p", {
                                 className: "text-xs text-white/60",
                                 children: "Pas encore de décision."
                               }, undefined, false, undefined, this)
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "rounded-2xl bg-white/5 border border-white/10 p-4",
                           children: [
-                            jsxDEV_7x81h0kn("p", {
+                            _jsxDEV("p", {
                               className: "text-xs uppercase tracking-[0.25em] text-white/60",
                               children: "À supprimer"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("ul", {
+                            _jsxDEV("ul", {
                               className: "mt-3 space-y-2 max-h-48 overflow-y-auto pr-1",
-                              children: results.can_delete.length > 0 ? results.can_delete.map((file, idx) => jsxDEV_7x81h0kn("li", {
+                              children: results.can_delete.length > 0 ? results.can_delete.map((file, idx) => _jsxDEV("li", {
                                 className: "flex items-center gap-3 text-sm",
                                 children: [
-                                  jsxDEV_7x81h0kn("input", {
+                                  _jsxDEV("input", {
                                     type: "checkbox",
                                     checked: !!selectedDeleteMap[file.file],
                                     onChange: (e) => toggleDeleteSelection(file.file, e.target.checked),
                                     className: "rounded border-white/40 bg-transparent"
                                   }, undefined, false, undefined, this),
-                                  jsxDEV_7x81h0kn("div", {
+                                  _jsxDEV("div", {
                                     className: "flex-1",
                                     children: [
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "font-semibold",
                                         children: file.name
                                       }, undefined, false, undefined, this),
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "text-[11px] text-white/60",
                                         children: file.reason
                                       }, undefined, false, undefined, this)
                                     ]
                                   }, undefined, true, undefined, this),
-                                  jsxDEV_7x81h0kn("span", {
+                                  _jsxDEV("span", {
                                     className: "text-xs text-white/60",
                                     children: file.size_h
                                   }, undefined, false, undefined, this)
                                 ]
-                              }, `${file.file}-delete-${idx}`, true, undefined, this)) : jsxDEV_7x81h0kn("p", {
+                              }, `${file.file}-delete-${idx}`, true, undefined, this)) : _jsxDEV("p", {
                                 className: "text-xs text-white/60",
                                 children: "Aucun fichier à supprimer."
                               }, undefined, false, undefined, this)
@@ -976,7 +988,7 @@ function App() {
                         }, undefined, true, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("button", {
+                    _jsxDEV("button", {
                       onClick: deleteSelected,
                       disabled: selectedDeleteCount === 0,
                       className: "btn-primary w-full",
@@ -988,106 +1000,106 @@ function App() {
                     }, undefined, true, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("section", {
+                _jsxDEV("section", {
                   className: "grid gap-4 md:grid-cols-2",
                   children: [
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
                       children: [
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "flex items-center justify-between",
                           children: [
-                            jsxDEV_7x81h0kn("h3", {
+                            _jsxDEV("h3", {
                               className: "text-lg font-semibold",
                               children: "Statistiques"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               className: "text-xs text-white/50",
                               children: "Dernier scan"
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        stats ? jsxDEV_7x81h0kn("div", {
+                        stats ? _jsxDEV("div", {
                           className: "space-y-2 text-sm text-white/70",
                           children: [
-                            jsxDEV_7x81h0kn("div", {
+                            _jsxDEV("div", {
                               className: "flex justify-between",
                               children: [
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: "Total scannés"
                                 }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: stats.total_files || 0
                                 }, undefined, false, undefined, this)
                               ]
                             }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
+                            _jsxDEV("div", {
                               className: "flex justify-between",
                               children: [
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: "Candidats IA"
                                 }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: stats.candidate_count ?? candidates.length
                                 }, undefined, false, undefined, this)
                               ]
                             }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
+                            _jsxDEV("div", {
                               className: "flex justify-between",
                               children: [
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: "Limite analyse"
                                 }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: Math.min(candidates.length, config.max_files)
                                 }, undefined, false, undefined, this)
                               ]
                             }, undefined, true, undefined, this),
-                            jsxDEV_7x81h0kn("div", {
+                            _jsxDEV("div", {
                               className: "flex justify-between",
                               children: [
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: "Protégés"
                                 }, undefined, false, undefined, this),
-                                jsxDEV_7x81h0kn("span", {
+                                _jsxDEV("span", {
                                   children: protectedFiles.length
                                 }, undefined, false, undefined, this)
                               ]
                             }, undefined, true, undefined, this)
                           ]
-                        }, undefined, true, undefined, this) : jsxDEV_7x81h0kn("p", {
+                        }, undefined, true, undefined, this) : _jsxDEV("p", {
                           className: "text-sm text-white/60",
                           children: "Aucune donnée pour l'instant."
                         }, undefined, false, undefined, this)
                       ]
                     }, undefined, true, undefined, this),
-                    jsxDEV_7x81h0kn("div", {
+                    _jsxDEV("div", {
                       className: "rounded-3xl bg-white/5 border border-white/10 p-5 space-y-3 backdrop-blur",
                       children: [
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: "flex items-center justify-between",
                           children: [
-                            jsxDEV_7x81h0kn("h3", {
+                            _jsxDEV("h3", {
                               className: "text-lg font-semibold",
                               children: "Suppression rapide"
                             }, undefined, false, undefined, this),
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               className: "text-xs text-white/50",
                               children: "Catégories"
                             }, undefined, false, undefined, this)
                           ]
                         }, undefined, true, undefined, this),
-                        stats && stats.stats ? jsxDEV_7x81h0kn("div", {
+                        stats && stats.stats ? _jsxDEV("div", {
                           className: "space-y-2 text-sm",
                           children: [
                             Object.keys(quickDeleteCategories).map((category) => {
                               const categoryStats = stats.stats[category];
                               if (!categoryStats || categoryStats.count === 0)
                                 return null;
-                              return jsxDEV_7x81h0kn("label", {
+                              return _jsxDEV("label", {
                                 className: "flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2",
                                 children: [
-                                  jsxDEV_7x81h0kn("input", {
+                                  _jsxDEV("input", {
                                     type: "checkbox",
                                     checked: quickDeleteCategories[category],
                                     onChange: (e) => setQuickDeleteCategories({
@@ -1096,14 +1108,14 @@ function App() {
                                     }),
                                     className: "rounded border-white/40 bg-transparent"
                                   }, undefined, false, undefined, this),
-                                  jsxDEV_7x81h0kn("div", {
+                                  _jsxDEV("div", {
                                     className: "flex-1",
                                     children: [
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "font-medium",
                                         children: category
                                       }, undefined, false, undefined, this),
-                                      jsxDEV_7x81h0kn("p", {
+                                      _jsxDEV("p", {
                                         className: "text-xs text-white/60",
                                         children: [
                                           categoryStats.count,
@@ -1116,13 +1128,13 @@ function App() {
                                 ]
                               }, category, true, undefined, this);
                             }),
-                            jsxDEV_7x81h0kn("button", {
+                            _jsxDEV("button", {
                               onClick: quickDeleteByCategory,
                               className: "btn-outline w-full",
                               children: "Supprimer les catégories cochées"
                             }, undefined, false, undefined, this)
                           ]
-                        }, undefined, true, undefined, this) : jsxDEV_7x81h0kn("p", {
+                        }, undefined, true, undefined, this) : _jsxDEV("p", {
                           className: "text-sm text-white/60",
                           children: "Lance un scan pour afficher ces options."
                         }, undefined, false, undefined, this)
@@ -1132,38 +1144,38 @@ function App() {
                 }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this),
-            jsxDEV_7x81h0kn("aside", {
+            _jsxDEV("aside", {
               className: "rounded-3xl bg-white/5 border border-white/10 p-5 flex flex-col backdrop-blur",
               children: [
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   className: "flex items-center justify-between mb-3",
                   children: [
-                    jsxDEV_7x81h0kn("h3", {
+                    _jsxDEV("h3", {
                       className: "text-lg font-semibold",
                       children: "Logs en direct"
                     }, undefined, false, undefined, this),
-                    jsxDEV_7x81h0kn("button", {
+                    _jsxDEV("button", {
                       className: "btn-ghost text-xs",
                       onClick: () => setLogs([]),
                       children: "Effacer"
                     }, undefined, false, undefined, this)
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("div", {
+                _jsxDEV("div", {
                   className: "flex-1 rounded-2xl border border-white/10 p-4 overflow-y-auto font-mono text-xs leading-relaxed text-white/80 space-y-3",
                   style: { background: "#070c1f" },
                   children: [
-                    logs.length === 0 && jsxDEV_7x81h0kn("p", {
+                    logs.length === 0 && _jsxDEV("p", {
                       className: "text-white/40",
                       children: "En attente d'évènements…"
                     }, undefined, false, undefined, this),
-                    logs.map((log, i) => jsxDEV_7x81h0kn("div", {
+                    logs.map((log, i) => _jsxDEV("div", {
                       className: "space-y-1",
                       children: [
-                        jsxDEV_7x81h0kn("div", {
+                        _jsxDEV("div", {
                           className: log.color || "text-white/80",
                           children: [
-                            jsxDEV_7x81h0kn("span", {
+                            _jsxDEV("span", {
                               className: "text-white/40",
                               children: [
                                 "[",
@@ -1175,7 +1187,7 @@ function App() {
                             log.message
                           ]
                         }, undefined, true, undefined, this),
-                        log.detail && jsxDEV_7x81h0kn("div", {
+                        log.detail && _jsxDEV("div", {
                           className: "text-[11px] text-white/40 pl-6",
                           children: log.detail
                         }, undefined, false, undefined, this)
@@ -1183,7 +1195,7 @@ function App() {
                     }, i, true, undefined, this))
                   ]
                 }, undefined, true, undefined, this),
-                jsxDEV_7x81h0kn("p", {
+                _jsxDEV("p", {
                   className: "mt-4 text-[11px] text-white/50",
                   children: "Les journaux sont mis à jour automatiquement."
                 }, undefined, false, undefined, this)
@@ -1195,4 +1207,4 @@ function App() {
     }, undefined, true, undefined, this)
   }, undefined, false, undefined, this);
 }
-ReactDOM.render(jsxDEV_7x81h0kn(App, {}, undefined, false, undefined, this), document.getElementById("app"));
+ReactDOM.render(_jsxDEV(App, {}, undefined, false, undefined, this), document.getElementById("app"));
