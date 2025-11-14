@@ -102,7 +102,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE)
 session = requests.Session()
 
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434').rstrip('/')
-OLLAMA_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '20'))
+OLLAMA_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '5'))
+MAX_PREVIEW_CHARS = int(os.getenv('MAX_PREVIEW_CHARS', '450'))
+MAX_NEIGHBOR_PREVIEW_CHARS = int(os.getenv('MAX_NEIGHBOR_PREVIEW_CHARS', '200'))
 
 
 def _ollama_endpoint(path: str) -> str:
@@ -197,6 +199,41 @@ PROTECTED_KEYWORDS = sorted(set(ALWAYS_KEEP_KEYWORDS + [
     'reçu', 'receipt', 'concert', 'réservation', 'lettre', 'motivation',
     'important', 'urgent', 'confidentiel'
 ]))
+
+
+def _truncate_preview_text(text: Optional[str], limit: int = MAX_PREVIEW_CHARS) -> Optional[str]:
+    """Clamp previews before sending them to the LLM."""
+
+    if not text:
+        return text
+
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+
+    clipped = text[:limit].rstrip()
+    # Éviter de couper au milieu d'un mot si possible
+    last_space = clipped.rfind(' ')
+    if last_space > limit * 0.6:
+        clipped = clipped[:last_space]
+    return clipped.rstrip() + '…'
+
+
+def _summarize_neighbors(neighbors: List[str],
+                         max_entries: int = 6,
+                         char_limit: int = MAX_NEIGHBOR_PREVIEW_CHARS) -> str:
+    """Retourne une courte description des fichiers voisins."""
+
+    if not neighbors:
+        return 'No close neighbors listed.'
+
+    subset = neighbors[:max_entries]
+    summary = ', '.join(subset)
+    if len(summary) > char_limit:
+        summary = summary[:char_limit].rstrip() + '…'
+    if len(neighbors) > max_entries:
+        summary += f" (+{len(neighbors) - max_entries} more)"
+    return summary
 
 CRITICAL_CONTENT_RULES = [
     {
@@ -994,9 +1031,13 @@ def analyze_file(file_info, model="llama3:8b"):
             'reason': f'🛡️ Document protégé ({keyword})'
         }
 
-    preview = extract_text_preview(file_info)
+    raw_preview = extract_text_preview(file_info)
+    preview = _truncate_preview_text(raw_preview, MAX_PREVIEW_CHARS)
     preview_length = len(preview) if preview else 0
-    print(f"📝 Preview length for {file_info['name']}: {preview_length}")
+    print(
+        f"📝 Preview length for {file_info['name']}: "
+        f"raw={len(raw_preview or '')} -> sent={preview_length}"
+    )
 
     critical_reason = detect_critical_content(file_info, preview)
 
@@ -1013,10 +1054,12 @@ def analyze_file(file_info, model="llama3:8b"):
         return local_decision
 
     parent_folder, neighbor_files = _list_neighbor_files(file_info)
-    neighbor_excerpt = ', '.join(neighbor_files) if neighbor_files else 'No close neighbors listed.'
+    neighbor_excerpt = _summarize_neighbors(neighbor_files)
 
     if preview:
-        preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
+        preview_section = (
+            f"Preview (max {MAX_PREVIEW_CHARS} chars, sanitized):\n{preview}\n"
+        )
     else:
         preview_section = (
             "No textual preview is available (likely binary/image/archive)."
@@ -1028,39 +1071,30 @@ def analyze_file(file_info, model="llama3:8b"):
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
-CRITICAL RULE: NEVER INVENT content, keywords (like 'Invoice'), or metadata not explicitly provided in the input. If you rely on a keyword for a high-importance verdict, you MUST quote the keyword you found.
+CRITICAL RULE: NEVER INVENT content, keywords (like 'Invoice'), or metadata you did not receive. If you cite a keyword for a high-importance verdict, quote it.
 
-INPUT METADATA (use this when the preview gives little signal):
-- File name: {file_info['name']}
-- Extension: {file_info['ext']}
-- Size: {human_size(file_info['size'])}
-- Age: {file_info['age']} days
-- Category: {file_info['category']}
-- Preview length: {preview_length} characters
+METADATA:
+- Name: {file_info['name']} (ext {file_info['ext']})
+- Size: {human_size(file_info['size'])} — Age: {file_info['age']} days — Category: {file_info['category']}
+- Preview length: {preview_length} chars
 - Parent folder: {parent_folder}
 - Neighbor files: {neighbor_excerpt}
 
-TEXT PREVIEW (top priority):
+TEXT PREVIEW (highest priority when available):
 {preview_section}
 
-STRICT NON-NEGOTIABLE RULES (content outranks filenames):
-1. If the preview or metadata indicates invoices, receipts, proofs of purchase, URSSAF/administrative docs, banking statements, IBAN/RIB, or payment references -> importance="high", can_delete=false. Explain which trigger fired.
-2. Tickets, boarding passes, travel reservations, QR codes, concert bookings -> importance="high", can_delete=false.
-3. Passwords, logins, credentials, recovery codes, OTP/2FA, or account access details -> importance="high", can_delete=false.
-4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, medical or psychological records, treatments, medications, therapy notes, or diagnostics -> importance="high", can_delete=false.
-5. If the preview contains any of the above protected keywords you MUST emit importance="high" (never "unknown").
-6. Only answer "importance":"unknown" when preview, metadata, folder context, AND filename all fail to provide direction. Lack of preview alone is not enough if metadata or naming already describes the purpose (e.g., screenshot, temp, invoice, booking, contract).
-7. Content > metadata > filename. When the preview is absent you still reason from metadata/folder neighbors instead of defaulting to unknown.
-8. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
-9. If the file is older than 30 days, smaller than 10 KB, has no textual preview, and its filename does not match any protected keyword or critical content hint (like "contract" or "invoice"), you MUST output importance="low" and can_delete=true.
+RULES:
+- Admin/finance docs (invoices, URSSAF, statements, IBAN/RIB, payments) ⇒ importance="high", can_delete=false.
+- Tickets, travel/booking proofs, QR/boarding passes ⇒ high, keep.
+- Passwords/credentials/recovery codes ⇒ high, keep.
+- CVs, contracts, attestations, IDs, prescriptions, medical/psychology records ⇒ high, keep.
+- If any protected keyword appears in the preview, emit importance="high".
+- Only output importance="unknown" when preview + metadata + folder + filename give no clue at all.
+- Content > metadata > filename. Use metadata if preview is missing.
+- Clear screenshot/temp/log/cache/test/duplicate names can be deleted if nothing hints at sensitivity.
+- Rule 9: if age > 30 days, size < 10 KB, no preview, and filename lacks protected hints (invoice/contract/etc.), force importance="low", can_delete=true.
 
-
-DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
-- Content or metadata clearly points to temporary/cache/log/screenshot/test/duplicate material.
-- No hints of administrative, financial, personal, or security relevance.
-- You can articulate why deletion is safe.
-
-Respond in valid JSON (no prose) using one of these forms:
+OUTPUT strictly valid JSON (no prose), choosing exactly one of:
 {{"importance":"high","can_delete":false,"reason":"why it must be kept"}}
 {{"importance":"unknown","can_delete":false,"reason":"why you are unsure"}}
 {{"importance":"low","can_delete":true,"reason":"why deletion is safe"}}
