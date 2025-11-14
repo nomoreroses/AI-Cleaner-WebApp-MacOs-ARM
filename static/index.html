@@ -119,6 +119,7 @@
             }));
             
             const [scanProgress, setScanProgress] = useState(loadState('scanProgress', { scanned: 0, message: '' }));
+            const [manualPathInput, setManualPathInput] = useState(config.path || '');
             const [analyzeProgress, setAnalyzeProgress] = useState(loadState('analyzeProgress', { current: 0, total: 0, file: '' }));
             const [aiThinking, setAiThinking] = useState(null);
             const [results, setResults] = useState(loadState('results', { can_delete: [], should_keep: [], need_review: [] }));
