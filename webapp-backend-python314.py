@@ -341,6 +341,15 @@ def _normalize(text: str) -> str:
     return unicodedata.normalize('NFKD', text).casefold()
 
 
+def _normalize_words(text: str) -> str:
+    """Normalize text for fuzzy filename heuristics (accent/spacing agnostic)."""
+
+    normalized = _normalize(text)
+    stripped = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    squashed = re.sub(r'[^a-z0-9]+', ' ', stripped)
+    return squashed.strip()
+
+
 def _tokenize_normalized(normalized_text: str) -> List[str]:
     return [token for token in re.split(r'[^a-z0-9]+', normalized_text) if token]
 
@@ -428,8 +437,8 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 
 def _looks_like_screenshot(name: str) -> bool:
-    normalized = _normalize(name)
-    return any(_normalize(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
+    normalized = _normalize_words(name)
+    return any(_normalize_words(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:

@@ -26,3 +26,15 @@ def test_screenshot_rule_has_priority_over_critical_content() -> None:
     assert decision is not None
     assert decision['can_delete'] is True
     assert 'Screenshot-style' in decision['reason']
+
+
+def test_screenshot_detection_covers_common_mac_variants() -> None:
+    variants = [
+        "Capture d’écran 2024-05-01 à 10.20.11.png",
+        "Capture d'ecran 2024-05-01 a 10.20.11.png",
+        "Capture decran 2024-05-01 a 10.20.11.png",
+        "Capture_d’écran_2024-05-01.png",
+    ]
+
+    for name in variants:
+        assert backend._looks_like_screenshot(name)
