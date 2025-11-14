@@ -280,15 +280,18 @@ CRITICAL_CONTENT_REGEX = [
 
 SHORT_KEYWORD_MAX_LEN = 3
 
-SCREENSHOT_PATTERNS = [
-    'capture d\'écran',
+SCREENSHOT_LATIN = [
+    "capture d'écran",
     'capture d’écran',
-    'capture d\'ecran',
+    "capture d'ecran",
     'screen shot',
     'screenshot',
-    'スクリーンショット',
-    '截圖',
     'screencap'
+]
+
+SCREENSHOT_UNICODE = [
+    'スクリーンショット',
+    '截圖'
 ]
 
 TEMPORARY_FILE_HINTS = ['tmp', 'temp', 'untitled', 'copy', 'copie', 'test', 'draft']
@@ -429,7 +432,23 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 def _looks_like_screenshot(name: str) -> bool:
     normalized = _normalize(name)
-    return any(_normalize(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
+
+    for keyword in SCREENSHOT_LATIN:
+        normalized_keyword = _normalize(keyword)
+        if not normalized_keyword:
+            continue
+        if normalized_keyword in normalized:
+            return True
+
+    folded_name = name.casefold()
+    for keyword in SCREENSHOT_UNICODE:
+        folded_keyword = keyword.casefold()
+        if not folded_keyword:
+            continue
+        if folded_keyword in folded_name:
+            return True
+
+    return False
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
