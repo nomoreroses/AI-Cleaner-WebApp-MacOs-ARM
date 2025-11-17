@@ -341,6 +341,15 @@ def _normalize(text: str) -> str:
     return unicodedata.normalize('NFKD', text).casefold()
 
 
+def _normalize_words(text: str) -> str:
+    """Normalize text for fuzzy filename heuristics (accent/spacing agnostic)."""
+
+    normalized = _normalize(text)
+    stripped = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    squashed = re.sub(r'[^a-z0-9]+', ' ', stripped)
+    return squashed.strip()
+
+
 def _tokenize_normalized(normalized_text: str) -> List[str]:
     return [token for token in re.split(r'[^a-z0-9]+', normalized_text) if token]
 
@@ -428,8 +437,13 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 
 def _looks_like_screenshot(name: str) -> bool:
-    normalized = _normalize(name)
-    return any(_normalize(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
+    normalized = _normalize_words(name)
+    for keyword in SCREENSHOT_PATTERNS:
+        normalized_keyword = _normalize_words(keyword)
+        # Skip empty normalized keywords (e.g., non-Latin characters that get stripped)
+        if normalized_keyword and normalized_keyword in normalized:
+            return True
+    return False
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
@@ -939,6 +953,13 @@ def analyze_file(file_info, model="llama3:8b"):
     preview_length = len(preview) if preview else 0
     print(f"📝 Preview length for {file_info['name']}: {preview_length}")
 
+    # Les règles locales basées sur le nom doivent primer avant la détection
+    # de contenu critique pour éviter d'écraser des heuristiques (ex: captures).
+    local_decision = apply_local_rules(file_info, preview)
+
+    if local_decision:
+        return local_decision
+
     critical_reason = detect_critical_content(file_info, preview)
 
     if critical_reason:
@@ -947,11 +968,6 @@ def analyze_file(file_info, model="llama3:8b"):
             'can_delete': False,
             'reason': f'🔒 {critical_reason}'
         }
-
-    local_decision = apply_local_rules(file_info, preview)
-
-    if local_decision:
-        return local_decision
 
     parent_folder, neighbor_files = _list_neighbor_files(file_info)
     neighbor_excerpt = ', '.join(neighbor_files) if neighbor_files else 'No close neighbors listed.'
