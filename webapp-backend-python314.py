@@ -16,6 +16,25 @@ import sys
 import unicodedata
 import zipfile
 from typing import Dict, List, Optional, Set, Tuple
+import subprocess
+
+# SocketIO a besoin d'un serveur async compatible (eventlet, gevent...).
+# On tente d'activer eventlet dès le démarrage pour éviter que Werkzeug ne
+# prenne la main et provoque l'erreur « write() before start_response ».
+ASYNC_MODE = os.getenv('SOCKETIO_ASYNC_MODE', 'eventlet')
+_eventlet_active = False
+
+if ASYNC_MODE == 'eventlet':
+    try:  # pragma: no cover - dépend de l'environnement d'exécution
+        import eventlet
+
+        eventlet.monkey_patch()
+        _eventlet_active = True
+    except Exception as exc:  # pragma: no cover - simple fallback
+        print(
+            f"⚠️  Eventlet indisponible ({exc}); « threading » sera utilisé pour Socket.IO."
+        )
+        ASYNC_MODE = 'threading'
 
 try:
     from PyPDF2 import PdfReader
@@ -77,13 +96,15 @@ if not INDEX_HTML.exists():
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path='/static')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE)
 
 # Session HTTP réutilisable
 session = requests.Session()
 
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434').rstrip('/')
-OLLAMA_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '20'))
+OLLAMA_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT', '5'))
+MAX_PREVIEW_CHARS = int(os.getenv('MAX_PREVIEW_CHARS', '450'))
+MAX_NEIGHBOR_PREVIEW_CHARS = int(os.getenv('MAX_NEIGHBOR_PREVIEW_CHARS', '200'))
 
 
 def _ollama_endpoint(path: str) -> str:
@@ -178,6 +199,41 @@ PROTECTED_KEYWORDS = sorted(set(ALWAYS_KEEP_KEYWORDS + [
     'reçu', 'receipt', 'concert', 'réservation', 'lettre', 'motivation',
     'important', 'urgent', 'confidentiel'
 ]))
+
+
+def _truncate_preview_text(text: Optional[str], limit: int = MAX_PREVIEW_CHARS) -> Optional[str]:
+    """Clamp previews before sending them to the LLM."""
+
+    if not text:
+        return text
+
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+
+    clipped = text[:limit].rstrip()
+    # Éviter de couper au milieu d'un mot si possible
+    last_space = clipped.rfind(' ')
+    if last_space > limit * 0.6:
+        clipped = clipped[:last_space]
+    return clipped.rstrip() + '…'
+
+
+def _summarize_neighbors(neighbors: List[str],
+                         max_entries: int = 6,
+                         char_limit: int = MAX_NEIGHBOR_PREVIEW_CHARS) -> str:
+    """Retourne une courte description des fichiers voisins."""
+
+    if not neighbors:
+        return 'No close neighbors listed.'
+
+    subset = neighbors[:max_entries]
+    summary = ', '.join(subset)
+    if len(summary) > char_limit:
+        summary = summary[:char_limit].rstrip() + '…'
+    if len(neighbors) > max_entries:
+        summary += f" (+{len(neighbors) - max_entries} more)"
+    return summary
 
 CRITICAL_CONTENT_RULES = [
     {
@@ -280,16 +336,22 @@ CRITICAL_CONTENT_REGEX = [
 
 SHORT_KEYWORD_MAX_LEN = 3
 
-SCREENSHOT_PATTERNS = [
-    'capture d\'écran',
+SCREENSHOT_LATIN = [
+    "capture d'écran",
     'capture d’écran',
-    'capture d\'ecran',
+    "capture d'ecran",
     'screen shot',
     'screenshot',
-    'スクリーンショット',
-    '截圖',
     'screencap'
 ]
+
+SCREENSHOT_UNICODE = [
+    'スクリーンショット',
+    '截圖'
+]
+
+SCREENSHOT_IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.heic', '.webp'}
+BASIC_SCREENSHOT_DUPLICATE_RE = re.compile(r'^\d+\s*\(\d+\)$')
 
 TEMPORARY_FILE_HINTS = ['tmp', 'temp', 'untitled', 'copy', 'copie', 'test', 'draft']
 ARCHIVE_EXTENSIONS = {'.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.tar.gz'}
@@ -298,6 +360,8 @@ CODE_ALWAYS_KEEP_EXTS = {
     '.java', '.kt', '.swift', '.rb', '.php', '.go', '.rs', '.cs', '.sh', '.ps1',
     '.bash', '.zsh', '.pl', '.sql', '.scss', '.less', '.vue'
 }
+SMALL_DOC_EXTS = {'.txt', '.log', '.rtf', '.md', '.pages', '.docx'}
+SMALL_DOC_MAX_BYTES = 10 * 1024
 CODE_FOLDER_HINTS = ['src', 'code', 'project', 'projet', 'projets', 'dev', 'app', 'backend', 'frontend']
 CODE_FILENAME_HINTS = [
     'package.json', 'requirements.txt', 'pipfile', 'pyproject.toml',
@@ -429,7 +493,36 @@ def detect_critical_content(file_info: Dict, preview: Optional[str]) -> Optional
 
 def _looks_like_screenshot(name: str) -> bool:
     normalized = _normalize(name)
-    return any(_normalize(keyword) in normalized for keyword in SCREENSHOT_PATTERNS)
+    tokens = _tokenize_normalized(normalized)
+
+    path_name = Path(name)
+    suffix = path_name.suffix.lower()
+    if suffix in SCREENSHOT_IMAGE_EXTS:
+        stem = path_name.stem.strip()
+        if BASIC_SCREENSHOT_DUPLICATE_RE.match(stem):
+            return True
+
+    for keyword in SCREENSHOT_LATIN:
+        normalized_keyword = _normalize(keyword)
+        if not normalized_keyword:
+            continue
+
+        if len(normalized_keyword) <= SHORT_KEYWORD_MAX_LEN:
+            if normalized_keyword in tokens:
+                return True
+        else:
+            if normalized_keyword in normalized:
+                return True
+
+    folded_name = name.casefold()
+    for keyword in SCREENSHOT_UNICODE:
+        folded_keyword = keyword.casefold()
+        if not folded_keyword:
+            continue
+        if folded_keyword in folded_name:
+            return True
+
+    return False
 
 
 def _list_neighbor_files(file_info, max_neighbors: int = 5) -> Tuple[str, List[str]]:
@@ -521,11 +614,11 @@ def apply_local_rules(file_info, preview: Optional[str]) -> Optional[dict]:
                 'reason': 'Archive older than 6 months with no protected keywords.'
             }
 
-    if ext in {'.txt', '.log'} and size < 4096 and age_days >= 30 and not preview:
+    if ext in SMALL_DOC_EXTS and size <= SMALL_DOC_MAX_BYTES and age_days >= 30 and not preview:
         return {
             'importance': 'low',
             'can_delete': True,
-            'reason': 'Tiny text/log file older than 30 days with no content preview.'
+            'reason': 'Tiny document/log file (<=10KB) older than 30 days with no preview.'
         }
 
     if ext in {'.zip'} and '(copie' in normalized_name and age_days >= 30:
@@ -592,6 +685,9 @@ def _extract_rtf_preview(path: str, max_chars: int = 600) -> Optional[str]:
 
     snippet = re.sub(r'{\\.*?}', ' ', snippet)
     snippet = re.sub(r'\\[a-zA-Z]+-?\d* ?', ' ', snippet)
+    snippet = snippet.strip()
+    if not snippet:
+        return None
     return _clean_preview_text(snippet, max_chars)
 
 
@@ -935,9 +1031,13 @@ def analyze_file(file_info, model="llama3:8b"):
             'reason': f'🛡️ Document protégé ({keyword})'
         }
 
-    preview = extract_text_preview(file_info)
+    raw_preview = extract_text_preview(file_info)
+    preview = _truncate_preview_text(raw_preview, MAX_PREVIEW_CHARS)
     preview_length = len(preview) if preview else 0
-    print(f"📝 Preview length for {file_info['name']}: {preview_length}")
+    print(
+        f"📝 Preview length for {file_info['name']}: "
+        f"raw={len(raw_preview or '')} -> sent={preview_length}"
+    )
 
     critical_reason = detect_critical_content(file_info, preview)
 
@@ -954,10 +1054,12 @@ def analyze_file(file_info, model="llama3:8b"):
         return local_decision
 
     parent_folder, neighbor_files = _list_neighbor_files(file_info)
-    neighbor_excerpt = ', '.join(neighbor_files) if neighbor_files else 'No close neighbors listed.'
+    neighbor_excerpt = _summarize_neighbors(neighbor_files)
 
     if preview:
-        preview_section = f"File preview (first lines, sanitized):\n{preview}\n"
+        preview_section = (
+            f"Preview (max {MAX_PREVIEW_CHARS} chars, sanitized):\n{preview}\n"
+        )
     else:
         preview_section = (
             "No textual preview is available (likely binary/image/archive)."
@@ -969,36 +1071,30 @@ def analyze_file(file_info, model="llama3:8b"):
 
     prompt = f"""You are a careful digital archivist. Decide if the file can be deleted.
 
-INPUT METADATA (use this when the preview gives little signal):
-- File name: {file_info['name']}
-- Extension: {file_info['ext']}
-- Size: {human_size(file_info['size'])}
-- Age: {file_info['age']} days
-- Category: {file_info['category']}
-- Preview length: {preview_length} characters
+CRITICAL RULE: NEVER INVENT content, keywords (like 'Invoice'), or metadata you did not receive. If you cite a keyword for a high-importance verdict, quote it.
+
+METADATA:
+- Name: {file_info['name']} (ext {file_info['ext']})
+- Size: {human_size(file_info['size'])} — Age: {file_info['age']} days — Category: {file_info['category']}
+- Preview length: {preview_length} chars
 - Parent folder: {parent_folder}
 - Neighbor files: {neighbor_excerpt}
 
-TEXT PREVIEW (top priority):
+TEXT PREVIEW (highest priority when available):
 {preview_section}
 
-STRICT NON-NEGOTIABLE RULES (content outranks filenames):
-1. If the preview or metadata indicates invoices, receipts, proofs of purchase, URSSAF/administrative docs, banking statements, IBAN/RIB, or payment references -> importance="high", can_delete=false. Explain which trigger fired.
-2. Tickets, boarding passes, travel reservations, QR codes, concert bookings -> importance="high", can_delete=false.
-3. Passwords, logins, credentials, recovery codes, OTP/2FA, or account access details -> importance="high", can_delete=false.
-4. CVs, cover letters, signed contracts, attestations, certificates, identity docs, prescriptions, medical or psychological records, treatments, medications, therapy notes, or diagnostics -> importance="high", can_delete=false.
-5. If the preview contains any of the above protected keywords you MUST emit importance="high" (never "unknown").
-6. Only answer "importance":"unknown" when preview, metadata, folder context, AND filename all fail to provide direction. Lack of preview alone is not enough if metadata or naming already describes the purpose (e.g., screenshot, temp, invoice, booking, contract).
-7. Content > metadata > filename. When the preview is absent you still reason from metadata/folder neighbors instead of defaulting to unknown.
-8. Screenshots (filenames containing "Capture d’écran", "Screenshot", "Screen Shot", etc.) can be deleted even if recent as long as no metadata or preview hints at sensitive content.
+RULES:
+- Admin/finance docs (invoices, URSSAF, statements, IBAN/RIB, payments) ⇒ importance="high", can_delete=false.
+- Tickets, travel/booking proofs, QR/boarding passes ⇒ high, keep.
+- Passwords/credentials/recovery codes ⇒ high, keep.
+- CVs, contracts, attestations, IDs, prescriptions, medical/psychology records ⇒ high, keep.
+- If any protected keyword appears in the preview, emit importance="high".
+- Only output importance="unknown" when preview + metadata + folder + filename give no clue at all.
+- Content > metadata > filename. Use metadata if preview is missing.
+- Clear screenshot/temp/log/cache/test/duplicate names can be deleted if nothing hints at sensitivity.
+- Rule 9: if age > 30 days, size < 10 KB, no preview, and filename lacks protected hints (invoice/contract/etc.), force importance="low", can_delete=true.
 
-
-DELETE ONLY WHEN ALL OF THE FOLLOWING ARE TRUE:
-- Content or metadata clearly points to temporary/cache/log/screenshot/test/duplicate material.
-- No hints of administrative, financial, personal, or security relevance.
-- You can articulate why deletion is safe.
-
-Respond in valid JSON (no prose) using one of these forms:
+OUTPUT strictly valid JSON (no prose), choosing exactly one of:
 {{"importance":"high","can_delete":false,"reason":"why it must be kept"}}
 {{"importance":"unknown","can_delete":false,"reason":"why you are unsure"}}
 {{"importance":"low","can_delete":true,"reason":"why deletion is safe"}}
@@ -1092,25 +1188,97 @@ def favicon():
         return send_from_directory(str(STATIC_DIR), 'favicon.ico')
     return '', 204
 
+
+def _finder_choose_folder() -> Tuple[Optional[Path], Optional[str]]:
+    """Open a Finder choose-folder dialog on macOS."""
+
+    if sys.platform != 'darwin':
+        return None, 'unsupported'
+
+    script = r'''
+        try
+            set chosenFolder to choose folder with prompt "Choisis le dossier à scanner"
+            return POSIX path of chosenFolder
+        on error errMsg number errNum
+            if errNum is -128 then
+                return "USER_CANCELLED"
+            else
+                return "ERROR:" & errMsg
+            end if
+        end try
+    '''
+
+    try:
+        completed = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False
+        )
+    except FileNotFoundError:
+        return None, 'osascript_missing'
+    except subprocess.TimeoutExpired:
+        return None, 'timeout'
+
+    output = (completed.stdout or '').strip()
+
+    if output == 'USER_CANCELLED':
+        return None, 'cancelled'
+
+    if output.startswith('ERROR:'):
+        return None, output.split(':', 1)[1].strip() or 'Finder error'
+
+    if completed.returncode != 0:
+        err_text = (completed.stderr or output or 'Finder error').strip()
+        return None, err_text
+
+    if not output:
+        return None, 'cancelled'
+
+    return Path(output), None
+
 @app.route('/api/select_folder', methods=['POST'])
 def api_select_folder():
     """Sélectionner un dossier côté backend (fallback Downloads)."""
     data = request.get_json(silent=True) or {}
     requested = data.get('path')
+    target: Optional[Path] = None
+    warning: Optional[str] = None
 
     if requested:
         target = Path(requested).expanduser()
-    elif state['last_scan_path']:
-        target = Path(state['last_scan_path'])
     else:
-        downloads = Path.home() / 'Downloads'
-        target = downloads if downloads.exists() else Path.home()
+        chosen, dialog_error = _finder_choose_folder()
+        if chosen:
+            target = chosen
+        elif dialog_error == 'cancelled':
+            return jsonify({'ok': False, 'error': 'Sélection annulée dans Finder'}), 400
+        elif dialog_error in {'unsupported', 'osascript_missing', 'timeout'}:
+            if dialog_error == 'unsupported':
+                warning = 'Finder est uniquement disponible sur macOS. Utilisation du dernier dossier connu.'
+            elif dialog_error == 'osascript_missing':
+                warning = 'osascript est introuvable : utilisation du dernier dossier connu.'
+            else:
+                warning = 'Finder ne répond pas, utilisation du dernier dossier connu.'
+        elif dialog_error:
+            return jsonify({'ok': False, 'error': dialog_error}), 500
+
+    if target is None:
+        if state['last_scan_path']:
+            target = Path(state['last_scan_path'])
+        else:
+            downloads = Path.home() / 'Downloads'
+            target = downloads if downloads.exists() else Path.home()
 
     if not target.exists() or not target.is_dir():
         return jsonify({'ok': False, 'error': f'Dossier introuvable: {target}'}), 400
 
     state['last_scan_path'] = str(target)
-    return jsonify({'ok': True, 'path': str(target)})
+    payload = {'ok': True, 'path': str(target)}
+    if warning:
+        payload['warning'] = warning
+    return jsonify(payload)
 
 
 @app.route('/api/scan', methods=['POST'])
@@ -1482,4 +1650,17 @@ if __name__ == '__main__':
 📡 WebSocket activé pour updates temps réel
     """)
     
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    run_kwargs = {
+        'host': '0.0.0.0',
+        'port': 5000,
+        'debug': False,
+        'use_reloader': False,
+    }
+
+    if not _eventlet_active and ASYNC_MODE != 'eventlet':
+        print(
+            "⚠️  WebSocket tourne en mode threading. Installe eventlet/gevent pour un support complet."
+        )
+        run_kwargs['allow_unsafe_werkzeug'] = True
+
+    socketio.run(app, **run_kwargs)
