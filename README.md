@@ -1,45 +1,155 @@
-### AI Cleaner WebApp 🤖
-Hey there! This is a smart file cleaning app that uses AI to help you declutter your digital life. Think of it as Marie Kondo for your hard drive, but with a brain powered by Ollama.
-Everything runs locally: no cloud, no upload, no tracking.
+# AI Cleaner WebApp - Backend Flask
 
-# What does it do?
-It scans your folders and uses AI (via Ollama) to intelligently identify which files are safe to delete - like old screenshots, random downloads, temporary files, and duplicates. The AI analyzes each file and gives you recommendations, but you stay in control of what actually gets deleted.
+Nettoyage intelligent de disque dur avec analyse IA locale via Ollama.
 
-# The cool part
-Smart protection - automatically protects important stuff like medical docs, contracts, passwords, etc.
-Category-based cleaning - bulk delete by file type (images, videos, docs, etc.)
+## Fonctionnalités
 
-# Quick start
+- **Scan récursif** : Parcourt les répertoires et détecte les fichiers candidats à la suppression
+- **Analyse IA** : Utilise Ollama (llama3:8b par défaut) pour analyser chaque fichier
+- **Règles locales** : Protège les fichiers importants (documents, contrats, etc.)
+- **WebSocket en temps réel** : Progression live du scan et de l'analyse
+- **Fallback automatique** : Bascule sur des règles si Ollama n'est pas disponible
 
-Make sure you have Ollama running locally (default: http://localhost:11434)
-Install the Python dependencies: pip install flask flask-cors flask-socketio requests
-Run the backend: python webapp-backend-python314.py
-Drop the index.html into the static/ folder it creates
-Open http://localhost:5000 and start cleaning!
+## Installation
 
-# Requirements
+### Prérequis
 
-macOS or Linux
-Python 3.10+
-Node not required
-Ollama installed (brew install ollama)
-At least one model pulled, e.g.:  ollama pull llama3:8b
+- Python 3.10+
+- Ollama installé et disponible (`ollama serve`)
+- pip
 
-# How it works
+### Setup
 
-Pick a folder to scan
-The app finds potentially deletable files
-AI analyzes each one (using Llama3 by default)
-You review the suggestions
-Delete with confidence!
+```bash
+# Cloner le repo
+git clone <repo>
+cd ai-cleaner-webapp
 
-The AI is pretty conservative - it'll mark files as "KEEP" if there's any doubt, and it absolutely won't touch anything with keywords like "medical", "contract", "password", etc.
+# Créer un environnement virtuel
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Tech stack
+# Installer les dépendances
+pip install -r requirements.txt
 
-Backend: Flask + SocketIO for real-time updates
-Frontend: React (via CDN) with Tailwind CSS
-AI: Ollama with Llama3:8b model (configurable)
-Storage: Everything runs locally, no cloud needed
+# Configurer les variables d'environnement (optionnel)
+cp .env.example .env
+# Éditer .env selon vos besoins
+```
 
-That's it! Happy cleaning! 🧹✨
+## Lancement
+
+```bash
+# Assurez-vous qu'Ollama tourne
+ollama serve
+
+# Dans un autre terminal
+python server.py
+```
+
+Le serveur démarre sur `http://localhost:5000`
+
+## Architecture
+
+```
+server.py          # Point d'entrée principal
+├── config.py      # Configuration centralisée
+├── tests/
+│   └── test_*.py   # Suite de tests
+└── static/         # Frontend (généré)
+```
+
+## Configuration
+
+Les variables d'environnement disponibles :
+
+- `OLLAMA_URL` : URL du service Ollama (défaut: http://localhost:11434)
+- `OLLAMA_TIMEOUT` : Timeout en secondes (défaut: 30)
+- `OLLAMA_MODEL` : Modèle à utiliser (défaut: llama3:8b)
+- `FLASK_PORT` : Port du serveur (défaut: 5000)
+- `FLASK_HOST` : Host (défaut: 0.0.0.0)
+- `SECRET_KEY` : Clé secrète Flask (générée si non définie)
+
+## Tests
+
+```bash
+pytest tests/ -v
+```
+
+## API Endpoints
+
+### POST `/api/scan`
+Lance un scan du répertoire.
+
+**Body:**
+```json
+{
+  "path": "/home/user",
+  "min_age": 30,
+  "min_size": 10,
+  "allowed_categories": ["Images", "Videos"]
+}
+```
+
+### POST `/api/analyze`
+Lance l'analyse IA des candidats trouvés.
+
+**Body:**
+```json
+{
+  "model": "llama3:8b"
+}
+```
+
+### POST `/api/delete`
+Supprime les fichiers sélectionnés.
+
+**Body:**
+```json
+{
+  "files": ["/path/to/file1", "/path/to/file2"]
+}
+```
+
+### GET `/api/status`
+Récupère le statut actuel de l'application.
+
+### POST `/api/stop`
+Arrête les opérations en cours.
+
+## WebSocket Events
+
+- `connected` : Connexion établie
+- `scan_started` : Début du scan
+- `scan_progress` : Progression du scan
+- `scan_complete` : Fin du scan
+- `analyze_started` : Début de l'analyse
+- `ai_thinking` : Analyse d'un fichier
+- `ai_result` : Résultat pour un fichier
+- `analyze_complete` : Fin de l'analyse
+- `log` : Messages de log en temps réel
+- `file_deleted` : Fichier supprimé
+
+## Troubleshooting
+
+### Ollama non disponible
+```bash
+# Vérifier qu'Ollama tourne
+curl http://localhost:11434/api/tags
+
+# Démarrer Ollama
+ollama serve
+```
+
+### Erreur de connexion
+- Vérifier le firewall
+- Vérifier OLLAMA_URL dans .env
+- Vérifier les logs du serveur
+
+## Contribution
+
+Le code suit PEP 8. Lancer les tests avant de commit.
+
+## License
+
+MIT
