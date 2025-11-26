@@ -331,25 +331,25 @@ def analyze_file_with_fallback(file_info: Dict, model: str) -> Dict:
     preview_section = f"Aperçu:\n{preview}\n" if preview else "Aperçu: Aucun (fichier binaire probable)"
     
     prompt = f"""
-Analyse ce fichier pour le nettoyage. Réponds UNIQUEMENT avec un objet JSON.
+Analyze this file for cleanup. Respond ONLY with a JSON object.
 
-Métadonnées:
-- Nom: {name}
-- Âge: {file_info['age']} jours  
-- Taille: {human_size(file_info['size'])}
-- Catégorie: {file_info['category']}
-- Dossier parent: {parent_folder}
+Metadata:
+- Name: {name}
+- Age: {file_info['age']} days  
+- Size: {human_size(file_info['size'])}
+- Category: {file_info['category']}
+- Parent folder: {parent_folder}
 
 {preview_section}
 
-Règles:
-- SUPPRIMER: installers, fichiers temporaires, doublons, captures d'écran aléatoires, brouillons anciens
-- GARDER: documents personnels, légaux, financiers, fichiers de travail importants
+Rules:
+- DELETE: installers, temp files, duplicates, random screenshots, old drafts
+- KEEP: personal documents, legal, financial, important work files
 
-Réponse JSON uniquement:
+JSON response only:
 {{ 
   "can_delete": true/false,
-  "reason": "explication courte",
+  "reason": "short explanation",
   "importance": "low"/"medium"/"high"
 }}
 """
